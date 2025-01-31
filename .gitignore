@@ -49,10 +49,9 @@ po/*~
 rsconnect/
 
 # Rds files 
-.rds
-.csv 
-.tif
-.dta
-.sav
-.xlsx
+*.csv
+*.tif
+*.dta
+*.sav
+*.xlsx
 # ini
