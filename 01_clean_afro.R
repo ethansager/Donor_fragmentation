@@ -143,7 +143,6 @@ data_list <- c(data_list, lapply(files, FUN = function(x) {
   cleaned_data <- haven::read_sav(x) %>%
     rename_all(tolower) %>%
     mutate(country = retroharmonize::as_character(country)) %>%
-    filter(country %in% c("Nigeria", "Mozambique", "Malawi", "Kenya", "Ghana")) %>%
     set_variable_labels(
       country = "Country",
       respno = "respondent number"
@@ -157,6 +156,7 @@ data_list <- c(data_list, lapply(files, FUN = function(x) {
   haven::write_sav(cleaned_data, cleaned_filename)
   
 }))
+
 
 ## Create Admin 1 Panel ##
 ab <- dir("C:/Users/eman7/Dropbox/GitHub/ra_work/Donor_fragmentation/00_rawdata/ab_raw/processed", pattern = "sav$")
@@ -231,8 +231,8 @@ folder <- "C:/Users/eman7/Dropbox/GitHub/ra_work/Donor_fragmentation/00_rawdata/
 files <- list.files(folder, pattern = "r3.csv", full.names = TRUE, recursive = TRUE)
 
 # Read each CSV and append to the list
-data_list <- c(data_list, lapply(files, function(x) read_xlsx(x)%>%
-                                   select(respno, latitude, longitude, precision_code)))
+data_list <- c(data_list, lapply(files, function(x) read_csv(x)%>%
+                                   select(respno, latitude, longitude)))
 
 
 # Combine all dataframes into one
@@ -274,8 +274,8 @@ files <- list.files(folder, pattern = "r4.csv", full.names = TRUE, recursive = T
 
 
 # Read each CSV and append to the list
-data_list <- c(data_list, lapply(files, function(x) read_xlsx(x)%>%
-                                   select(respno, latitude, longitude, precision_code)))
+data_list <- c(data_list, lapply(files, function(x) read_csv(x)%>%
+                                   select(respno, latitude, longitude)))
 
 
 # Combine all dataframes into one
@@ -315,8 +315,8 @@ files <- list.files(folder, pattern = "r5.csv", full.names = TRUE, recursive = T
 
 
 # Read each CSV and append to the list
-data_list <- c(data_list, lapply(files, function(x) read_xlsx(x)%>%
-                                   select(respno, latitude, longitude, precision_code)))
+data_list <- c(data_list, lapply(files, function(x) read_csv(x)%>%
+                                   select(respno, latitude, longitude)))
 
 
 # Combine all dataframes into one
@@ -348,7 +348,7 @@ r6 <- merged_ab[[4]]%>%
   mutate_if ( is.labelled_spss_survey, to_factor)
 descr(r6)
 
-to_factor
+
 data_list <- list()
 
 folder <- "C:/Users/eman7/Dropbox/GitHub/ra_work/Donor_fragmentation/00_rawdata/ab_raw_geo"
@@ -358,8 +358,8 @@ files <- list.files(folder, pattern = "r6.csv", full.names = TRUE, recursive = T
 
 
 # Read each CSV and append to the list
-data_list <- c(data_list, lapply(files, function(x) read_xlsx(x)%>%
-                                   select(respno, latitude, longitude, precision_code)))
+data_list <- c(data_list, lapply(files, function(x) read_csv(x)%>%
+                                   select(respno, latitude, longitude)))
 
 
 # Combine all dataframes into one

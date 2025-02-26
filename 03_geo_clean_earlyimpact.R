@@ -16,8 +16,6 @@ pacman::p_load(
   psych,
   tidylog,
   units,
-  DescTools,
-  zoo,
   ### GEO Packages
   sf,
   spdep,
@@ -32,21 +30,24 @@ pacman::p_load(
 dat<-read_csv("00_rawdata/GODAD_projectlevel.csv")
 
 # Key missing info by donor 
-countries_iso3 <- c("NGA", "MOZ", "MWI", "KEN", "GHA")
-# dat%>% 
-#   group_by(donor)%>%
-#   mutate(miss_time = if_else(is.na(paymentyear) & is.na(closingyear) & is.na(startyear), 1, 0))%>%
-#   summarise(admin2_missing = sum(is.na(gid_2))/n(),
-#             percison_code = sum(precision_code ==12, na.rm = TRUE)/n(),
-#             notime_var = sum(miss_time)/n(),
-#             no_disb = sum(disb>0, na.rm = TRUE)/n(),
-#             no_comm = sum(comm>0, na.rm = TRUE)/n(),
-#             no_monies = sum(comm> 0 | disb > 0, na.rm =TRUE)/n(),
-#             yr_covered = paste0(min(startyear, na.rm = TRUE), "-", max(startyear, na.rm = TRUE)))%>%
-#   print(n=30)
+
+dat%>% 
+  group_by(donor)%>%
+  mutate(miss_time = if_else(is.na(paymentyear) & is.na(closingyear) & is.na(startyear), 1, 0))%>%
+  summarise(admin2_missing = sum(is.na(gid_2))/n(),
+            percison_code = sum(precision_code ==12, na.rm = TRUE)/n(),
+            notime_var = sum(miss_time)/n(),
+            no_disb = sum(disb>0, na.rm = TRUE)/n(),
+            no_comm = sum(comm>0, na.rm = TRUE)/n(),
+            no_monies = sum(comm> 0 | disb > 0, na.rm =TRUE)/n(),
+            yr_covered = paste0(min(startyear, na.rm = TRUE), "-", max(startyear, na.rm = TRUE)))%>%
+  print(n=30)
 
 
 
+countries_iso3 <- c(
+  "NGA", "MOZ", "MWI", "KEN", "GHA"
+)
 
 # Round 3	2005-2006	18	
 # Round 4	2008-2009	20	
@@ -64,21 +65,17 @@ dat <- dat %>%
       sector_main %in% 232:323 ~ 1,
       sector_main %in% 331:998 ~ 0,
       TRUE ~ NA
-    ),
-    group_yr = case_when(
-      paymentyear %in% 2005:2008 ~ 1,
-      paymentyear %in% 2009:2011 ~ 2,
-      paymentyear %in% 2012:2015 ~ 3,
-      ))%>%
-  filter(
-           !is.na(gid_2)& 
-           !is.na(disb_loc_evensplit) & 
+    )
+  )%>%
+  filter(!is.na(gid_2)& !is.na(disb_loc_evensplit) & 
            !is.na(paymentyear) & 
-           disb != 0 & 
-           gid_0 %in% countries_iso3 & 
-           paymentyear >= 2005 & paymentyear <= 2015
+           disb != 0 & gid_0 %in% countries_iso3 & 
+           paymentyear >= 2005 & paymentyear <= 2015,
+         #Adding filter to select only early impact aid
+         early_impact == 1
          )
 
+# This gives us 24000 aid projects 
 # This gives us 24000 aid projects 
 
 shp <- geodata::gadm(country = countries_iso3, level = 2, path = "00_rawdata/shapefiles/")
@@ -95,8 +92,10 @@ aid_points <- st_as_sf(
 # Step 4: Perform a spatial join to link aid points to admin-2 polygons
 dat <- st_join(aid_points, shp)
 
+
 ## Create a hhi to merge back 
 hhi_results_admin2 <- dat %>%
+  
   # Aggregate total disbursements per donor within each group
   group_by(gid_0, GID_2, paymentyear, donor) %>%
   summarise(
@@ -111,7 +110,6 @@ hhi_results_admin2 <- dat %>%
     # Count of project types 
     total_early_admin2 = sum(total_early_projects),
     total_late_admin2 = sum(total_late_projects),
-    total_proj_admin2 = sum(total_late_projects, total_early_projects),
     # Sum total aid across all donors in the group
     total_aid_admin2 = sum(total_disb_admin2, na.rm = TRUE),
     
@@ -128,14 +126,13 @@ hhi_results_admin2 <- dat %>%
     frag_1_admin2 = 1 -  max(total_disb_admin2 / total_aid_admin2, na.rm = TRUE),
     
     # Largest 3 total_disb / total_aid from 1
-    frag_3_admin2 = 1- sum(head(sort(total_disb_admin2 / total_aid_admin2, decreasing = TRUE), 3), na.rm = TRUE),
+    frag_3_admin2 = sum(head(sort(total_disb_admin2 / total_aid_admin2, decreasing = TRUE), 3), na.rm = TRUE),
     
     # Count the number of donors below 10% of total_disb / total_aid
     frag_below10_admin2 = sum((total_disb_admin2 / total_aid_admin2) < 0.10, na.rm = TRUE),
     
     .groups = "drop"
   )
-
 
 ## Create a hhi to merge back 
 hhi_results_admin1 <- dat %>%
@@ -146,7 +143,7 @@ hhi_results_admin1 <- dat %>%
     total_disb_admin1 = sum(abs(disb_loc_evensplit), na.rm = TRUE), 
     total_early_projects = sum(early_impact == 1, na.rm = TRUE),
     total_late_projects = sum(early_impact == 0, na.rm = TRUE),
-            .groups = "drop") %>%
+    .groups = "drop") %>%
   
   # Group by region and year to calculate HHI and other metrics
   group_by(gid_0, GID_1, paymentyear) %>%
@@ -154,7 +151,6 @@ hhi_results_admin1 <- dat %>%
     # Count of project types 
     total_early_admin1 = sum(total_early_projects),
     total_late_admin1 = sum(total_late_projects),
-    total_proj_admin1 = sum(total_late_projects, total_early_projects),
     # Sum total aid across all donors in the group
     total_aid_admin1 = sum(total_disb_admin1, na.rm = TRUE),
     
@@ -171,7 +167,7 @@ hhi_results_admin1 <- dat %>%
     frag_1_admin1 = 1 -  max(total_disb_admin1 / total_aid_admin1, na.rm = TRUE),
     
     # Largest 3 total_disb / total_aid from 1
-    frag_3_admin1 = 1 - sum(head(sort(total_disb_admin1 / total_aid_admin1, decreasing = TRUE), 3), na.rm = TRUE),
+    frag_3_admin1 = sum(head(sort(total_disb_admin1 / total_aid_admin1, decreasing = TRUE), 3), na.rm = TRUE),
     
     # Count the number of donors below 10% of total_disb / total_aid
     frag_below10_admin1 = sum((total_disb_admin1 / total_aid_admin1) < 0.10, na.rm = TRUE),
@@ -179,12 +175,14 @@ hhi_results_admin1 <- dat %>%
     .groups = "drop"
   )
 
+
 # Descriptives region count by admin level  
 
 n_distinct(hhi_results_admin1$GID_1)
 n_distinct(hhi_results_admin2$GID_2)
 
 # Step 2: Merge the HHI results back into the main dataset
+target_years <- c(2005, 2010, 2015)
 
 panel_aid_admin1 <- dat %>%
   sf::st_drop_geometry()%>%
@@ -206,80 +204,48 @@ panel_aid_admin2 <- dat %>%
   distinct()
 
 check <- panel_aid_admin2 %>%
-  group_by(GID_0, GID_1, GID_2, group_yr)%>%
+  group_by(GID_0, GID_1, GID_2, paymentyear)%>%
   summarise(count = n())%>%
   filter(count > 1)
-  
+
 n_distinct(panel_aid_admin1$GID_1)
 n_distinct(panel_aid_admin2$GID_2)
 
 #population grid GWP
 #### Admin 2 
+pop_10 <-geodata::population(2010, res = "10", path = tempdir())
 
-# Population grid GWP
-# Load population data for each year
-yrs <- c(2005, 2010, 2015)
+shp_admin2 <- sf::st_as_sf(geodata::gadm(country = countries_iso3, level = 2, path = "00_rawdata/shapefiles/"))
 
-admin2_pop <- data.frame()
-admin1_pop <- data.frame()
+avg_pop_admin2_10  <- terra::extract(
+  pop_10,
+  shp_admin2,
+  fun = sum,
+  na.rm = TRUE,
+  exact = TRUE
+)
 
-for (yr in yrs) {
-  pop <- geodata::population(yr, res = "10", path = tempdir())
-  
-  shp_admin2 <- sf::st_as_sf(geodata::gadm(country = countries_iso3, level = 2, path = "00_rawdata/shapefiles/"))
-  avg_pop_admin2 <- terra::extract(pop, shp_admin2, fun = sum, na.rm = TRUE, exact = TRUE)
-  temp_admin2 <- data.frame(
-    GID_2 = shp_admin2$GID_2,
-    year = yr,
-    pop = avg_pop_admin2[, 2]
-  )
-  admin2_pop <- rbind(admin2_pop, temp_admin2)
-  
-  shp_admin1 <- sf::st_as_sf(geodata::gadm(country = countries_iso3, level = 1, path = "00_rawdata/shapefiles/"))
-  avg_pop_admin1 <- terra::extract(pop, shp_admin1, fun = sum, na.rm = TRUE, exact = TRUE)
-  temp_admin1 <- data.frame(
-    GID_1 = shp_admin1$GID_1,
-    year = yr,
-    pop = avg_pop_admin1[, 2]
-  )
-  admin1_pop <- rbind(admin1_pop, temp_admin1)
-}
-
-# Interpolate population for missing years
-# First interpolate population for missing years
-admin2_pop <- admin2_pop %>%
-  group_by(GID_2) %>%
-  complete(year = 2005:2015) %>%
-  mutate(
-    pop = na.approx(pop, x = year, na.rm = FALSE, rule = 2),
-    group_yr = case_when(
-      year %in% 2005:2008 ~ 1,
-      year %in% 2009:2011 ~ 2,
-      year %in% 2012:2015 ~ 3
-    )
-  ) 
-
-admin1_pop <- admin1_pop %>%
-  group_by(GID_1) %>%
-  complete(year = 2005:2015) %>%
-  mutate(
-    pop = na.approx(pop, x = year, na.rm = FALSE, rule = 2),
-    group_yr = case_when(
-      year %in% 2005:2008 ~ 1,
-      year %in% 2009:2011 ~ 2,
-      year %in% 2012:2015 ~ 3
-    )
-  )
-
-# Merge with panel data
-panel_aid_admin1 <- panel_aid_admin1 %>%
-  left_join(admin1_pop, by = c("GID_1", "paymentyear" = "year")) %>%
-  rename(pop_admin1 = pop)
+shp_admin2$log_avg_pop_admin2 <- log(avg_pop_admin2_10[, 2])
 
 panel_aid_admin2 <- panel_aid_admin2 %>%
-  left_join(admin2_pop, by = c("GID_2", "paymentyear" = "year")) %>%
-  rename(pop_admin2 = pop)
+  tidylog::left_join(select(shp_admin2, log_avg_pop_admin2, GID_2), by = "GID_2")
 
+##### Admin 1
+shp_admin1 <- sf::st_as_sf(geodata::gadm(country = countries_iso3, level = 1, path = "00_rawdata/shapefiles/"))
+
+
+avg_pop_admin1_10  <- terra::extract(
+  pop_10,
+  shp_admin1,
+  fun = sum,
+  na.rm = TRUE,
+  exact = TRUE
+)
+
+shp_admin1$log_avg_pop_admin1 <- log(avg_pop_admin1_10[, 2])
+
+panel_aid_admin1 <- panel_aid_admin1 %>%
+  tidylog::left_join(select(shp_admin1, log_avg_pop_admin1, GID_1), by = "GID_1")
 
 ###### Read in Afro data and create panel to match ########
 
@@ -296,20 +262,19 @@ afro_points <- st_as_sf(
 afro_points <- st_join(afro_points, shp_admin2)
 
 
+
 admin1_afro <-afro_points%>%
   group_by(GID_1, wave)%>%
   filter(!is.na(GID_1) & !is.na(wave))%>%
   sf::st_drop_geometry()%>%
   mutate(
-            afro_count = n(),
-            year = substr(date_of_interview, 1, 4),
-            mean_sgq_admin1 = mean(sgqi, na.rm = TRUE),
-            mean_svc_admin1 = mean(ea_svc_index, na.rm = TRUE),
-            mean_fac_admin1 = mean(ea_fac_index, na.rm = TRUE)
+    afro_count = n(),
+    mean_sgq_admin1 = mean(sgqi, na.rm = TRUE),
+    mean_svc_admin1 = mean(ea_svc_index, na.rm = TRUE),
+    mean_fac_admin1 = mean(ea_fac_index, na.rm = TRUE)
   )%>%
   select(
     afro_count,
-    year,
     wave,
     GID_0,
     GID_1,
@@ -317,34 +282,8 @@ admin1_afro <-afro_points%>%
   )%>%
   mutate(mean_svc_admin1 = if_else(wave ==3, NA, mean_svc_admin1),
          mean_fac_admin1 = if_else(wave ==3, NA, mean_fac_admin1),
-         )%>%
+  )%>%
   distinct()
-
-admin1_afro <- admin1_afro %>%
-  mutate(year = as.numeric(year))
-
-# Create a complete panel of years for each GID_1.
-admin1_afro <- admin1_afro %>%
-  group_by(GID_1) %>%
-  complete(year = seq(min(year), max(year) + 1, by = 1)) %>%
-  arrange(GID_1, year)%>%
-  fill(wave, GID_0, afro_count, .direction = "down")%>%
-  mutate(group_yr = case_when(
-      year %in% 2005:2008 ~ 1,
-      year %in% 2009:2011 ~ 2,
-      year %in% 2012:2015 ~ 3,
-      ))
-
-# Interpolate the mean values across the complete sequence of years.
-admin1_afro <- admin1_afro %>%
-  group_by(GID_1) %>%
-  mutate(
-    mean_sgq_admin1 = na.approx(mean_sgq_admin1, x = year, na.rm = FALSE, rule = 2),
-    mean_svc_admin1 = na.approx(mean_svc_admin1, x = year, na.rm = FALSE, rule = 2),
-    mean_fac_admin1 = na.approx(mean_fac_admin1, x = year, na.rm = FALSE, rule = 2)
-  ) %>%
-  ungroup()
-  
 
 ### admin 2 
 admin2_afro <-afro_points%>%
@@ -353,14 +292,12 @@ admin2_afro <-afro_points%>%
   sf::st_drop_geometry()%>%
   mutate(
     afro_count = n(),
-    year = substr(date_of_interview, 1, 4),
     mean_sgq_admin2 = mean(sgqi, na.rm = TRUE),
     mean_svc_admin2 = mean(ea_svc_index, na.rm = TRUE),
     mean_fac_admin2 = mean(ea_fac_index, na.rm = TRUE)
   )%>%
   select(
     afro_count,
-    year,
     wave,
     GID_0,
     GID_1,
@@ -372,41 +309,28 @@ admin2_afro <-afro_points%>%
   )%>%
   distinct()
 
-admin2_afro <- admin2_afro %>%
-  mutate(year = as.numeric(year))
-
-# Create a complete panel of years for each GID_1.
-admin2_afro <- admin2_afro %>%
-  group_by(GID_2) %>%
-  complete(year = seq(min(year), max(year) + 1, by = 1)) %>%
-  arrange(GID_2, year) %>%
-  fill(wave, GID_0, GID_1, afro_count, .direction = "down")%>%
-  mutate(group_yr = case_when(
-      year %in% 2005:2008 ~ 1,
-      year %in% 2009:2011 ~ 2,
-      year %in% 2012:2015 ~ 3,
-      ))
-
-# Interpolate the mean values across the complete sequence of years.
-admin2_afro <- admin2_afro %>%
-  group_by(GID_2) %>%
-  mutate(
-    mean_sgq_admin2 = na.approx(mean_sgq_admin2, x = year, na.rm = FALSE, rule = 2),
-    mean_svc_admin2 = na.approx(mean_svc_admin2, x = year, na.rm = FALSE, rule = 2),
-    mean_fac_admin2 = na.approx(mean_fac_admin2, x = year, na.rm = FALSE, rule = 2)
-  ) %>%
-  ungroup()
-
 # Round 3	2005-2006	18	
 # Round 4	2008-2009	20	
 # Round 5	2011-2013	34	
 # Round 6	2014-2015	36
 
 panel_aid_admin1 <- panel_aid_admin1 %>%
-  left_join(admin1_afro, by= c("paymentyear"="year", "GID_0", "GID_1"))
+  mutate(wave = case_when(
+    paymentyear %in% 2005:2007 ~ 3,
+    paymentyear %in% 2008:2010 ~ 4,
+    paymentyear %in% 2011:2013 ~ 5,
+    paymentyear %in% 2014:2015 ~ 6,
+  ))%>%
+  left_join(admin1_afro, by= c("wave", "GID_0", "GID_1"))
 
 panel_aid_admin2 <- panel_aid_admin2 %>%
-  left_join(admin2_afro, by= c("paymentyear"="year", "GID_0", "GID_1", "GID_2"))
+  mutate(wave = case_when(
+    paymentyear %in% 2005:2007 ~ 3,
+    paymentyear %in% 2008:2010 ~ 4,
+    paymentyear %in% 2011:2013 ~ 5,
+    paymentyear %in% 2014:2015 ~ 6,
+  ))%>%
+  left_join(admin2_afro, by= c("wave", "GID_0", "GID_1", "GID_2"))
 
 ### Read in and compute night lights 
 admin1_nl <- read_csv("00_rawdata/nightlights/topcodefix/processed_topcodefix_nl_admin1.csv")%>%
@@ -471,62 +395,36 @@ panel_aid_admin1 <- panel_aid_admin1 %>%
 
 panel_aid_admin2 <- panel_aid_admin2 %>%
   left_join(st_drop_geometry(shp_admin2) %>% select(distance_to_capital, GID_2), by = "GID_2")
-
-
 #### SPEI Index 
 
-# Read the SPEI NetCDF file
-spei_nc <- terra::rast("00_rawdata/spei/spei12.nc")
+spei <- terra::rast("00_rawdata/spei_yearly_12mnth.tif")
 
-# Extract SPEI values for years 2005-2015 
-admin1_spei <- data.frame()
-admin2_spei <- data.frame() 
+spei_admin1  <- terra::extract(
+  spei,
+  shp_admin1,
+  fun = mean,
+  na.rm = TRUE,
+  exact = TRUE
+)
 
-for (year in 2005:2015) {
-  # Get SPEI layer for this year
-  spei_year <- spei_nc[[year - 1901]] # Assuming NC file starts from 1950
-  
-  # Extract for admin1
-  spei_vals_admin1 <- terra::extract(
-    spei_year,
-    shp_admin1,
-    fun = mean,
-    na.rm = TRUE,
-    exact = TRUE
-  )
-  
-  temp_admin1 <- data.frame(
-    GID_1 = shp_admin1$GID_1,
-    year = year,
-    spei = spei_vals_admin1[, 2]
-  )
-  admin1_spei <- rbind(admin1_spei, temp_admin1)
-  
-  # Extract for admin2
-  spei_vals_admin2 <- terra::extract(
-    spei_year, 
-    shp_admin2,
-    fun = mean,
-    na.rm = TRUE,
-    exact = TRUE
-  )
-  
-  temp_admin2 <- data.frame(
-    GID_2 = shp_admin2$GID_2,
-    year = year,
-    spei = spei_vals_admin2[, 2]
-  )
-  admin2_spei <- rbind(admin2_spei, temp_admin2)
-}
+shp_admin1$avg_spei_admin1 <- spei_admin1[, 2]
 
-# Join SPEI values to panel data
+spei_admin2  <- terra::extract(
+  spei,
+  shp_admin2,
+  fun = mean,
+  na.rm = TRUE,
+  exact = TRUE
+)
+
+shp_admin2$avg_spei_admin2 <- spei_admin2[, 2]
+
 panel_aid_admin1 <- panel_aid_admin1 %>%
-  left_join(admin1_spei, by = c("GID_1", "paymentyear" = "year")) %>%
-  rename(spei_admin1 = spei)
+  left_join(st_drop_geometry(shp_admin1) %>% select(avg_spei_admin1, GID_1), by = "GID_1")
 
 panel_aid_admin2 <- panel_aid_admin2 %>%
-  left_join(admin2_spei, by = c("GID_2", "paymentyear" = "year")) %>%
-  rename(spei_admin2 = spei)
+  
+  left_join(st_drop_geometry(shp_admin2) %>% select(avg_spei_admin2, GID_2), by = "GID_2")
 
 
 ### Distance to nearest town of 100k 
@@ -538,9 +436,10 @@ cities_100k <- cities %>%
   st_drop_geometry()%>%
   st_as_sf(., coords = c("Longitude", "Latitude"), crs = 4326)
 
+
 # Compute admin1 distances between projects and cities
 distance_matrix1 <- st_nn(shp_admin1$centroid, cities_100k, k = 1, returnDist = TRUE, progress = TRUE)
-  
+
 # Find nearest city for each project
 shp_admin1$nearest_city_dist <- sapply(distance_matrix1$dist, function(x) x[1]/1000)# Convert to KM
 
@@ -559,7 +458,6 @@ panel_aid_admin2 <- panel_aid_admin2 %>%
   left_join(st_drop_geometry(shp_admin2) %>% select(nearest_city_dist, GID_2), by = "GID_2")
 
 
-
 ### Degree of urbanization 
 process_file <- function(file_name) {
   # Extract year from the filename
@@ -570,8 +468,8 @@ process_file <- function(file_name) {
   # Add a new column with the year
   data <- data %>%
     mutate(Year = as.numeric(year))%>%
-    filter(GID_0GHSL %in% countries_iso3 & Year >= 2005)%>%
-    select(any_of(c("GID_1", "GID_2")), Urban_share, Year)
+    filter(GID_0GHSL %in% countries_iso3 & Year == 2010)%>%
+    select(any_of(c("GID_1", "GID_2")), Urban_share)
   
   return(data)
 }
@@ -582,17 +480,8 @@ urb_files_admin1 <- list.files("00_rawdata/degurba", pattern = "level1", full.na
 urb_admin1 <- lapply(urb_files_admin1, process_file) %>%
   bind_rows()
 
-urb_admin1 <- urb_admin1 %>%
-    group_by(GID_1) %>% 
-    complete(Year = 2005:2015) %>%
-    arrange(GID_1, Year) %>%
-    mutate(
-      Urban_share = na.approx(Urban_share, x = Year, na.rm = FALSE, rule = 3)
-    ) %>%
-    ungroup()
-
 panel_aid_admin1 <- panel_aid_admin1 %>%
-  left_join(urb_admin1, by =  c("paymentyear" = "Year","GID_1"))
+  left_join(urb_admin1, by =  "GID_1")
 
 
 urb_files_admin2 <- list.files("00_rawdata/degurba", pattern = "level2", full.names = TRUE)
@@ -601,19 +490,8 @@ urb_files_admin2 <- list.files("00_rawdata/degurba", pattern = "level2", full.na
 urb_admin2 <- lapply(urb_files_admin2, process_file) %>%
   bind_rows()
 
-urb_admin2 <- urb_admin2 %>%
-    group_by(GID_2) %>%
-    complete(Year = 2005:2015) %>%
-    arrange(GID_2, Year) %>%
-    mutate(
-      Urban_share = na.approx(Urban_share, x = Year, na.rm = FALSE, rule = 3)
-    ) %>%
-    ungroup()
-
-
 panel_aid_admin2 <- panel_aid_admin2 %>%
-  left_join(urb_admin2, by = c("paymentyear" = "Year", "GID_2"))
-
+  left_join(urb_admin2, by = "GID_2")
 
 ### okay last one WGI governace effectiveness as a control 
 wgi <- readxl::read_xlsx("00_rawdata/wgidataset.xlsx")%>%
@@ -621,37 +499,23 @@ wgi <- readxl::read_xlsx("00_rawdata/wgidataset.xlsx")%>%
 
 
 panel_aid_admin1 <- panel_aid_admin1 %>%
-
+  select(-mean_2004, -mean_2017, -GID_0.y, -GID_0.x.x, -GID_0.y.y)%>%
+  rename(GID_0 = GID_0.x)%>%
   left_join(wgi, by = c("paymentyear" = "year", "GID_0"))
 
 panel_aid_admin2 <- panel_aid_admin2 %>%
-
+  select(-mean_2004, -mean_2017, -GID_0.y, -GID_0.x.x, -GID_0.y.y)%>%
+  rename(GID_0 = GID_0.x)%>%
   left_join(wgi, by = c("paymentyear" = "year", "GID_0"))
+
+panel_aid_admin2 <- panel_aid_admin2 %>%
+  select(-geometry)%>%
+  st_drop_geometry()
 
 panel_aid_admin1 <- panel_aid_admin1 %>%
-  select(
-    GID_0 = GID_0.x, GID_1, paymentyear,
-    starts_with("frag_"), starts_with("mean_"),
-    total_early_admin1, total_late_admin1, total_proj_admin1,
-    total_aid_admin1, donor_count_admin1, hhi_admin1, frag_index_admin1,
-    pop_admin1, group_yr = group_yr.x, afro_count, wave,
-    distance_to_capital, spei_admin1, nearest_city_dist, Urban_share, ge_pct
-  )
-
-panel_aid_admin2 <- panel_aid_admin2 %>%
-  select(
-    GID_0 = GID_0.x, GID_1, GID_2, paymentyear,
-    starts_with("frag_"), starts_with("mean_"),
-    total_early_admin2, total_late_admin2, total_proj_admin2,
-    total_aid_admin2, donor_count_admin2, hhi_admin2, frag_index_admin2,
-    pop_admin2, group_yr = group_yr.x, afro_count, wave,
-    distance_to_capital, spei_admin2, nearest_city_dist, Urban_share, ge_pct
-  )
-
-
-#Winsorize the top and bottom 5 as per others did% #### TODO ####
+  select(-geometry)%>%
+  st_drop_geometry()
 
 ### SAVE OUT FINAL PROCESSED DATA ### 
-write_csv(panel_aid_admin1, "01_panel_data/panel_aid_admin1.csv")
-
-write_csv(panel_aid_admin2, "01_panel_data/panel_aid_admin2.csv")
+write_csv(panel_aid_admin1, "01_panel_data/panel_aid_admin1_earlyimpact.csv")
+write_csv(panel_aid_admin2, "01_panel_data/panel_aid_admin2_earlyimpact.csv")

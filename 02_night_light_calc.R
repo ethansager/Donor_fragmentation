@@ -48,16 +48,16 @@ for (i in seq_along(raster_data$file)) {
   zonal_stats <- exactextractr::exact_extract(
     nightlight_raster,
     ssa_admin1,
-    "mean"
+    "sum"
   )
   
   # Assign statistics to the shapefile columns
-  ssa_admin1[[paste0("mean_", year_label)]] <- zonal_stats
+  ssa_admin1[[paste0("sum_", year_label)]] <- zonal_stats
 }
 
 ssa_admin1%>%
   st_drop_geometry()%>%
-  write_csv(., "processed_topcodefix_nl_admin1.csv")
+  write_csv(., "processed_topcodefix_nl_admin1_sum.csv")
 
 # admin 2
 ssa_admin2<-sf::st_as_sf(geodata::gadm(country = countries, level = 2, path = "C:/Users/eman7/OneDrive/Desktop/shapefiles/"))
@@ -74,13 +74,13 @@ for (i in seq_along(raster_data$file)) {
   zonal_stats <- exactextractr::exact_extract(
     nightlight_raster,
     ssa_admin2,
-    "mean"
+    "sum"
   )
   
   # Assign statistics to the shapefile columns
-  ssa_admin2[[paste0("mean_", year_label)]] <- zonal_stats
+  ssa_admin2[[paste0("sum_", year_label)]] <- zonal_stats
 }
 
 ssa_admin2%>%
   st_drop_geometry()%>%
-  write_csv(., "processed_topcodefix_nl_admin2.csv")
+  write_csv(., "processed_topcodefix_nl_admin2_sum.csv")

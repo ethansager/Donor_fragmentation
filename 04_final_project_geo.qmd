@@ -198,9 +198,39 @@ ggplot(data = admin2_sf) +
 
 ```
 
+```{r}
+#| label: fig-plots3
+#| fig-cap: "Mean Subgovernmental Scores by ADM1 and ADM2 in Kenya 2015" 
+#| fig-subcap:
+#|   - "ADM1"
+#|   - "ADM2" 
+#| layout-ncol: 2
+#| 
+admin1_sf <- shp_admin1%>%
+  left_join(panel_aid_admin1, by = c("GID_0", "GID_1"))%>%
+  filter(GID_0 == "KEN" & paymentyear == 2015)
+
+ggplot(data = admin1_sf) +
+  geom_sf(aes(fill = mean_sgq_admin1)) +
+  scale_fill_viridis_c(option = "viridis", na.value = "grey90") +
+  theme_minimal() +
+  labs(fill = "Mean Value")
+
+admin2_sf <- africa_admin2%>%
+  left_join(panel_aid_admin2, by =c("GID_0", "GID_1", "GID_2"))%>%
+  filter(GID_0 == "KEN" & paymentyear == 2015)
+
+ggplot(data = admin2_sf) +
+  geom_sf(aes(fill = mean_sgq_admin2)) +
+  scale_fill_viridis_c(option = "viridis", na.value = "grey90") +
+  theme_minimal() +
+  labs(fill = "Mean Value")
+
+```
+
 ## Model ADM1
 
-We first fit the two models as show below for each fragmentation method we constructed, as the literature points towards the specific pheonoma each measure seeks to address. We don't include the 
+We first fit the two models as show below for each fragmentation method we constructed, as the literature points towards the specific pheonoma each measure seeks to address. We don't include the
 
 $$
 \text{Fixed Effects: } \text{mean_nl}_{i,t-1} = \beta_0 + \beta_1 \log(\text{total_aid_admin1}_{i,t}) + \beta_2 \text{frag_index_admin1}_{i,t} + \beta_3 \left[\log(\text{total_aid_admin1}_{i,t}) \cdot \text{frag_index_admin1}_{i,t}\right] + \beta_4 \text{mean_sgq_admin1}_{i,t} + \text{state_fixed_effects}_i + \varepsilon_{i,t}
@@ -210,15 +240,14 @@ $$
 \text{Random Effects: } \text{mean_nl}_{i,t-1} = \beta_0 + \beta_1 \log(\text{total_aid_admin1}_{i,t}) + \beta_2 \text{frag_index_admin1}_{i,t} + \beta_3 \left[\log(\text{total_aid_admin1}_{i,t}) \cdot \text{frag_index_admin1}_{i,t}\right] + \beta_4 \log(\text{total_aid_admin1}_{i,t}) + \varepsilon_{i,t}
 $$
 
-
 ```{r}
 #| echo: false
 
 #Fixed Effects
-fe_hhi <- plm(lag(mean_nl,1) ~ log(total_aid_admin1) * frag_index_admin1 + mean_sgq_admin1 + ge_pct, 
+fe_hhi <- plm(mean_nl ~ lag(log(total_aid_admin1),1) * lag(frag_index_admin1,1) * mean_sgq_admin1 + ge_pct, 
                     data = panel_aid_admin1,
+                    effect="individual",
                     index = c("GID_1", "paymentyear"), 
-                    effect = "twoways",
                     model = "within")
 
 fe_1 <- plm(lag(mean_nl,1) ~ log(total_aid_admin1) * frag_1_admin1 + mean_sgq_admin1 + ge_pct, 
@@ -252,10 +281,9 @@ suppressWarnings(stargazer(mods, type = "text"))
 
 ```
 
-
 ```{r}
 #Random Effects
-random_hhi <-  plm(lag(mean_nl,1) ~ log(total_aid_admin1) * frag_index_admin1 + mean_sgq_admin1 + mean_svc_admin1 + mean_fac_admin1 + ge_pct + distance_to_capital + log_avg_pop_admin1 + nearest_city_dist + Urban_share + avg_spei_admin1, 
+random_hhi <-  plm(lag(mean_nl,1) ~ log(total_aid_admin1) * frag_index_admin1 * mean_sgq_admin1 + mean_svc_admin1 + mean_fac_admin1 + ge_pct + distance_to_capital + log_avg_pop_admin1 + nearest_city_dist + Urban_share + avg_spei_admin1, 
                     data = panel_aid_admin1,
                     index = c("GID_1", "paymentyear"), 
                     model="random")
@@ -287,8 +315,6 @@ mods <- lapply(ls(pattern = "^random"), get)
 suppressWarnings(stargazer(mods, type = "text"))
 
 ```
-
-
 
 Random Effects (AMD1): When shifting from the fixed effects model to random we include a series of controls around the spatial location of the ADM1, distance to capital which is computed using geodisnic distance and converted to KM and the logged average population. With their inclusion we see the effects are what we would have expected with more population or being closer to the capital we see a higher value in night lights.
 
@@ -337,7 +363,6 @@ suppressWarnings(stargazer(mods, type = "text"))
 
 ```
 
-
 ```{r}
 #Random Effects
 random2_hhi <-  plm(lag(mean_nl,1) ~ log(total_aid_admin1) * frag_index_admin1 + mean_sgq_admin1 + mean_svc_admin1 + mean_fac_admin1 + ge_pct + distance_to_capital + log_avg_pop_admin1 + nearest_city_dist + Urban_share + avg_spei_admin1, 
@@ -373,7 +398,8 @@ suppressWarnings(stargazer(mods, type = "text"))
 
 ```
 
-# Addressing Mispecifcation 
+# Addressing Mispecifcation
+
 ```{r}
 
 pcdtest(lag(mean_nl,1) ~ log(total_aid_admin1) * donor_count_admin1 + mean_sgq_admin1 + ge_pct, data = panel_aid_admin1,
