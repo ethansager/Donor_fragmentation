@@ -26,20 +26,11 @@ pacman::p_load(
 # full data
 panel_aid_admin1 <- read_csv("01_panel_data/panel_aid_admin1.csv")
 panel_aid_admin2 <- read_csv("01_panel_data/panel_aid_admin2.csv")
-# early impact 
-panel_aid_admin1_early <- read_csv("01_panel_data/panel_aid_admin1_earlyimpact.csv")
-panel_aid_admin2_early <- read_csv("01_panel_data/panel_aid_admin2_earlyimpact.csv")
-# late impact
-panel_aid_admin1_late <- read_csv("01_panel_data/panel_aid_admin1_lateimpact.csv")
-panel_aid_admin2_late <- read_csv("01_panel_data/panel_aid_admin2_lateimpact.csv")
-# grouped data
-panel_aid_admin1_grp <- read_csv("01_panel_data/panel_aid_admin1_grouped.csv")
-panel_aid_admin2_grp <- read_csv("01_panel_data/panel_aid_admin2_grouped.csv")
 
 run_regression <- function(data, index_cols, aid_col, frag_cols, controls, fixed_effects = TRUE) {
   models <- list()
   model_type <- ifelse(fixed_effects, "within", "pooled")
-  effect_param <- ifelse(fixed_effects, "individual", NULL)
+  effect_param <- ifelse(fixed_effects, "twoways", NULL)
   
   # Ensure data is sorted by time before applying lag function
   data <- data[order(data[[index_cols[2]]]), ]
@@ -47,7 +38,7 @@ run_regression <- function(data, index_cols, aid_col, frag_cols, controls, fixed
   for (frag_col in frag_cols) {
     if (length(controls) > 0) {
       control_str <- paste(controls, collapse = " + ")
-      formula <- as.formula(paste("lag(mean_nl,1) ~ log(", aid_col, ") +", frag_col, "+", control_str))
+      formula <- as.formula(paste("log(lag(mean_nl,5)+.01) ~ log(", aid_col, ") +", frag_col, "*", control_str))
     } else {
       formula <- as.formula(paste("lag(mean_nl,1) ~ log(", aid_col, ") +", frag_col))
     }
@@ -67,8 +58,8 @@ run_regression <- function(data, index_cols, aid_col, frag_cols, controls, fixed
 # Define model parameters 
 frag_vars_admin1 <- c("frag_index_admin1", "frag_1_admin1", "frag_3_admin1", "frag_below10_admin1", "donor_count_admin1")
 frag_vars_admin2 <- c("frag_index_admin2", "frag_1_admin2", "frag_3_admin2", "frag_below10_admin2", "donor_count_admin2")
-controls_fix_admin1 <- c("mean_sgq_admin1", "ge_pct", "distance_to_capital", "log_avg_pop_admin1", "nearest_city_dist", "avg_spei_admin1")
-controls_fix_admin2 <- c("mean_sgq_admin2", "ge_pct", "distance_to_capital", "log_avg_pop_admin2", "nearest_city_dist", "avg_spei_admin2")
+controls_fix_admin1 <- c("mean_sgq_admin1")
+controls_fix_admin2 <- c("mean_sgq_admin2")
 controls_rand_admin1 <- c("mean_sgq_admin1", "mean_svc_admin1", "mean_fac_admin1", "ge_pct", "distance_to_capital", "log_avg_pop_admin1", "nearest_city_dist", "avg_spei_admin1")
 controls_rand_admin2 <- c("mean_sgq_admin2", "mean_svc_admin2", "mean_fac_admin2", "ge_pct", "distance_to_capital", "log_avg_pop_admin2", "nearest_city_dist", "avg_spei_admin2")
 
@@ -96,8 +87,9 @@ random_models_admin2_late <- run_regression(panel_aid_admin2_late, c("GID_2", "p
 # Output results to LaTeX tables
 
 # Fixed Effects Models
-stargazer(fe_models_admin1, type = "latex", out = "fe_models_admin1.tex")
-stargazer(fe_models_admin2, type = "latex", out = "fe_models_admin2.tex")
+stargazer(fe_models_admin1, type = "text", out = "fe_models_admin1.tex")
+stargazer(fe_models_admin2, type = "text", out = "fe_models_admin2.tex")
+
 stargazer(fe_models_admin1_early, type = "latex", out = "fe_models_admin1_early.tex")
 stargazer(fe_models_admin2_early, type = "latex", out = "fe_models_admin2_early.tex")
 stargazer(fe_models_admin1_late, type = "latex", out = "fe_models_admin1_late.tex")

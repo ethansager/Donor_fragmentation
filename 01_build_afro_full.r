@@ -14,6 +14,7 @@ pacman::p_load(
   retroharmonize,
   readxl,
   assertr,
+  lubridate,
   ### GEO Packages
   sf,
   spdep,
@@ -24,10 +25,6 @@ pacman::p_load(
 
 
 data_list <- list()
-
-output_folder <- "00_rawdata/ab_raw/processed"
-
-
 
 files <- list.files(here("00_rawdata", "ab_raw_geo"), pattern = ".csv", full.names = TRUE, recursive = TRUE)
 
@@ -186,25 +183,6 @@ afro_merged[, `:=`(
 # Rescale
 range_vals <- range(afro_merged$sub_gov_qual, na.rm = TRUE)
 afro_merged[, sgqi := (sub_gov_qual - range_vals[1]) / diff(range_vals) * 100]
-
-afro_merged %>%
-  filter(!is.na(country_name)) %>%
-  # First identify countries present in all waves
-  group_by(country_name) %>%
-  filter(n_distinct(wave) == 4) %>%  # Only keep countries present in all 4 waves
-  ungroup() %>%
-  # Then proceed with the original analysis
-  group_by(wave, country_name) %>%
-  summarise(mean.sqgi = mean(sgqi, na.rm =TRUE),
-            mean.subgov = mean(sub_gov_qual, na.rm = TRUE)) %>%
-  ggplot(aes(x = wave, y = mean.sqgi, color = as.factor(country_name), group = country_name)) +
-  geom_line() + 
-  geom_point() +
-  theme_minimal() +
-  labs(x = "Wave", 
-       y = "Mean SGQI Score",
-       title = "Sub-Government Quality Index by Country Over Time\n(Countries Present in All Waves)") +
-  theme(legend.position = "right")
 
 #clean ea items 
 afro_merged <-afro_merged %>%
@@ -378,21 +356,81 @@ remove <- look %>%
     filter(!GID_0 %in% c("SWZ", "TZA"))%>%
     select(respno, wave)
 
-# Create a map view of the points
-look %>%
-    filter(!is.na(latitude) & !is.na(longitude)) %>%
-    select(GID_0, latitude, longitude)%>%
-    st_as_sf(coords = c("longitude", "latitude"), crs = 4326) %>%
-    distinct()%>%
-    mapview::mapview(zcol = "GID_0")
 
 #### Create final dataset #####
+# Clean and standardize date formats to extract year
+if ("dateintr" %in% colnames(afro_merged)) {
+    # First check date formats
+    date_check <- afro_merged %>%
+        mutate(date_char = as.character(dateintr)) %>%
+        summarise(
+            min_date = min(dateintr, na.rm = TRUE),
+            max_date = max(dateintr, na.rm = TRUE),
+            na_count = sum(is.na(dateintr)),
+            invalid_values = list(unique(date_char[
+              !is.na(date_char) & 
+              !grepl("^\\d{4}-\\d{2}-\\d{2}$", date_char)
+              ])
+              )
+        )
+    
+    print("Date of interview summary:")
+    print(date_check)
+
+    # Extract year from dates in various formats
+    afro_merged <- afro_merged %>%
+        mutate(
+            dateintr = as.character(dateintr),
+            year = case_when(
+                # For standard date format (YYYY-MM-DD)
+                !is.na(dateintr) & grepl("^\\d{4}-\\d{2}-\\d{2}$", dateintr) ~ 
+                    year(ymd(dateintr, quiet = TRUE)),
+                
+                # For other date formats with 4-digit year
+                !is.na(dateintr) & grepl("\\d{4}", dateintr) ~ 
+                    as.numeric(str_extract(dateintr, "\\d{4}")),
+
+                # For years such as 1-Apr-05
+                !is.na(dateintr) & grepl("[a-z]-\\d{2}", dateintr) ~ 
+                    as.numeric(paste0("20", str_extract(dateintr, "(?<=-)[0-9]{2}"))),
+
+                # Default to wave year estimate when date is unavailable
+                !is.na(wave) ~ case_when(
+                    wave == 3 ~ 2005,
+                    wave == 4 ~ 2008,
+                    wave == 5 ~ 2012,
+                    wave == 6 ~ 2015,
+                    TRUE ~ NA_real_
+                ),
+                
+                # Default case
+                TRUE ~ NA_real_
+            )
+        )
+        
+    
+    # Check the results
+    year_summary <- afro_merged %>%
+        group_by(wave) %>%
+        summarise(
+            year_min = min(year, na.rm = TRUE),
+            year_max = max(year, na.rm = TRUE),
+            year_na_count = sum(is.na(year)),
+            year_counts = list(table(year))
+        )
+    
+    print("Survey year summary by wave:")
+    print(year_summary)
+    
+} else {
+    print("dateintr column not found in afro_merged dataset")
+}
 
 afro_fin <- afro_merged %>%
     #drop the cases that feel right across borders in wave 5 and 6
-    anti_join(remove, by = c("respno", "wave")) %>%
-    #
-    select(respno, COUNTRY, wave, dateintr, latitude, longitude,
+    anti_join(remove) %>%
+    #Grab the columns of interest 
+    select(respno, country = COUNTRY, wave, dateintr, year, latitude, longitude,
                  starts_with("GID_"),
                  sub_gov_qual, non_miss, sgqi,
                  ea_svc_index, ea_fac_index, non_miss_ea,

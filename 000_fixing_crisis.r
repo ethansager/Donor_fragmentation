@@ -28,14 +28,15 @@ pend <- pend %>%
 pend <- pend %>%
   left_join(., emdat, by = "DisNo.")
 
-table(pend$Start.Year, pend$disastertype)
 
 # Read admin1 panel data
 admin1_panel <- read.csv("01_panel_data/panel_aid_admin1.csv")
 
-countries_iso3 <- c(
-  "NGA", "MOZ", "MWI", "KEN", "GHA"
-)
+# get country isos for gadm 
+countries_iso3 <- read_csv("00_rawdata/nightlights/topcodefix/processed_topcodefix_nl_admin1.csv")%>%
+  select(GID_0)%>%
+  distinct()%>%
+  pull()
 
 shp <- geodata::gadm(country = countries_iso3, level = 1, path = "00_rawdata/shapefiles/")
 
