@@ -1,0 +1,436 @@
+---
+title: "Competition or Chaos? Donor Fragmentation and the Politics of Aid Effectiveness"
+author: "Ethan Sager"
+format: 
+  html:
+    page-layout: full
+    code-fold: true
+editor: visual
+bibliography: references.bib
+execute:
+  warning: false
+  message: false
+---
+
+```{r}
+if (!require("pacman")) 
+  install.packages("pacman"); 
+
+pacman::p_load(
+  tidyverse,
+  here,
+  readr,
+  janitor,
+  sjmisc,
+  plm,
+  marginaleffects,
+  car,
+  stargazer,
+  broom,
+  ### GEO Packages
+  sf,
+  spdep,
+  spatstat,
+  geodata,
+  terra,
+  tmap
+)
+
+
+#Load required datasets 
+countries_iso3 <- c("BEN", "BWA", "GHA", "MDG", "MLI", "MOZ", "MWI", "NAM", "SEN", 
+"TZA", "ZAF", "ZMB", "ZWE")
+
+panel_aid_admin1 <- read_csv("01_panel_data/panel_aid_admin1_new.csv")%>%
+    filter(GID_0 %in% countries_iso3)
+
+panel_aid_admin2 <- read.csv("01_panel_data/panel_aid_admin2_new.csv")%>%
+    filter(GID_0 %in% countries_iso3)
+
+
+shp_admin2 <- sf::st_as_sf(geodata::gadm(country = countries_iso3, level = 2, path = "00_rawdata/shapefiles/"))
+shp_admin1 <- sf::st_as_sf(geodata::gadm(country = countries_iso3, level = 1, path = "00_rawdata/shapefiles/"))
+
+african_iso3_ssa <- c(
+  "AGO", "BEN", "BWA", "BFA", "BDI", "CMR", "CAF", "TCD", "COG", "COD",
+  "DJI", "GNQ", "ERI", "SWZ", "ETH", "GAB", "GMB", "GHA", "GIN", "GNB",
+  "CIV", "KEN", "LSO", "LBR", "MDG", "MWI", "MLI", "MRT", "MOZ", "NAM",
+  "NER", "NGA", "RWA", "SEN", "SLE", "SOM", "ZAF", "SSD", "SDN", "TZA",
+  "TGO", "UGA", "ZMB", "ZWE"
+)
+
+africa_admin1 <- sf::st_as_sf(geodata::gadm(country = african_iso3_ssa, level = 1, path = "00_rawdata/shapefiles/"))
+
+africa_admin2 <- sf::st_as_sf(geodata::gadm(country = african_iso3_ssa, level = 2, path = "00_rawdata/shapefiles/"))
+
+```
+
+## Project Overview
+
+Donor fragmentation—where multiple donors provide aid to the same region without coordination—has been criticized for creating inefficiencies and overburdening recipient governments @knack2007. While this fragmentation often hinders cohesive development strategies resulting in less effective aid outcomes, some research suggests that competition between donors can drive innovation and offer recipient governments more choice @dreher2015 . Despite these insights, little is known about how these dynamics play out at the sub-national level, where political and institutional contexts often vary significantly across regions within the same country. This research project aims to investigate how donor fragmentation influences aid effectiveness at the sub-national level, identifying the political and institutional factors that determine whether fragmentation leads to improved or diminished development outcomes.
+
+National policies and institutional quality have long been recognized as crucial determinants of aid effectiveness @burnside2000, @acemoglu2001. At the national level, well-functioning governments may be better equipped to leverage competition, while weak governments might struggle to do so. However, at the sub-national level, the impact of fragmentation on aid effectiveness is likely to be shaped not only by these national factors, but also by a combination of local political factors, governance capacity,and institutional frameworks. Sub-national governments with greater administrative capacity are better positioned to coordinate donor efforts and align aid with local priorities, while weaker regions may face inefficiencies and duplication @faguet2014. Furthermore, decentralized political systems, where local leaders exert greater influence over donor activities, may foster better alignment of fragmented aid with local needs. In centralized systems, fragmented aid flows may reflect national priorities, potentially sidelining regional needs @ahmad2005. This misalignment can exacerbate inefficiencies, as local needs are sidelined, and regional governments may struggle to manage donor competition effectively.
+
+## Data Sources
+
+We will leverage three main datasets:
+
+1.  Geocoded Open Data for Aid and Development (GODAD) dataset @bomprezzi2024
+
+    1.  The GODAD dataset is based on the OECD’s Creditor Reporting System (CRS) and data from AidData on China (2000-2021), India (2007-2014), and the World Bank (1995-2023), providing geocoded information on aid projects for the 1973-2020 period. The data was geocoded via a natural language processing approach (Google Maps API) and provide auxiliary information about projects along several dimensions. For this research a sub-sample of this data from 2005-2015 will be used in five African Countries: Nigeria, Mozambique, Malawi, Kenya, and Ghana.
+
+2.  Geocoded Afrobarometer data (Rounds 1-6)
+
+    1.  William and Mary geocoded the enumeration area names of all six rounds of Afrobarometer’s surveys in 37 African countries between 1999 and 2015 giving us the lat long of this enumeration area. For this research we will use a similar subsample to GODAD covering the same years and countries.
+
+3.  Harmonized DMSP-VIIRS yearly dataset spanning from 1992-2018 @li2020
+
+    1.  Due to the period of interest 2005-2015, we have a break in the Nighttime light (NTL) data time-series typically used in econometric models, the Defense Meteorological Satellite Program (DMSP)/Operational Linescan System (OLS) which ends in 2013. From 2013 the new time-series is based on the Visible Infrared Imaging Radiometer Suite (VIIRS) on the Suomi National Polar-orbiting Partnership. Given the two different datasets the range of possible values differ. DMSP NTL is less precise and truncated at the top end of the radiance scales, this is not the same issue in VIIRS data which has improved spatial and radiometric resolutions of the VIIRS data have been notably improved, leading to no truncation of upper bound radiance. This however means the two datasets are not directly comparable. Thankfully @li2020 created an integrated and consistent NTL dataset at the global scale by harmonizing the inter-calibrated NTL observations from the DMSP data and the simulated DMSP-like NTL observations from the VIIRS data.
+
+These datasets will allow us to analyze the interaction between governance and fragmentation and its implications for aid effectiveness at the subnational level. We hypothesize that while governance capacity enhances aid effectiveness, donor fragmentation generally undermines it. Strong governance can mitigate the negative impact of fragmentation, but conversely, as fragmentation increases, it can diminish the positive influence of governance on aid outcomes. We will assess fragmentation at the second administrative level, typically the district level, utilizing the boundaries from GADM 4.1. Following @gehring2017, we will construct three donor fragmentation indexes for each administrative unit, while governance capacity and perceptions will be derived from Afrobarometer survey data. The primary outcome variable of interest will be the prevalence of poverty at the second administrative level, estimated using aforementioned night light luminosity data.
+
+## Descriptive Statistics
+
+We are able to aggregate the data at two levels of sub-national delineation administrative level one i.e. ADM1 (normally states or regions) and administrative level two i.e. ADM2 (normally district or country) both as defined as by GADM 4.1. Unsurprisingly, missing data becomes more of a concern at ADM2 with not all regions being covered by survey or aid data, and the sample size being quite small on average. However we do believe it allows greater heterogeneity to be highlighted that would not be within ADM1.
+
+Furthermore @dreher2015, points towards the interplay of administrative levels on estimating the effect of aid on nightlights. They use the precursor to this data set on World Bank projects to estimate the effect of aid on nightlight radiance. Following a instrumental variable approach through the interaction of whether or not a country has passed the threshold for receiving the International Development Association's concessional aid with the recipient region's probability of receiving aid. Overall, they find significant correlations between aid and growth in ADM2 regions, but no causal effects. Something this analysis hopes to address.
+
+Below we plot the subgovernmental scores for each ADM, we can see this heterogeneity in @fig-plots where the difference within in many regions is markdly different when we go from ADM1 to ADM2.
+
+```{r}
+#| label: fig-plots
+#| fig-cap: "Mean Subgovernmental Scores by ADM1 and ADM2 in 2015" 
+#| fig-subcap:
+#|   - "ADM1"
+#|   - "ADM2" 
+#| layout-ncol: 2
+
+admin1_sf <- africa_admin1%>%
+  left_join(panel_aid_admin1, by =c("GID_0", "GID_1"))%>%
+  filter(paymentyear == 2015 | is.na(paymentyear))
+
+ggplot(data = admin1_sf) +
+  geom_sf(aes(fill = mean_sgq_admin1)) +
+  scale_fill_viridis_c(option = "viridis", na.value = "grey90") +
+  theme_minimal() +
+  labs(fill = "Mean Value")
+
+admin2_sf <- africa_admin2%>%
+  left_join(panel_aid_admin2, by =c("GID_0", "GID_1", "GID_2"))%>%
+  filter(paymentyear == 2015 | is.na(paymentyear))
+
+ggplot(data = admin2_sf) +
+  geom_sf(aes(fill = mean_sgq_admin2)) +
+  scale_fill_viridis_c(option = "viridis", na.value = "grey90") +
+  theme_minimal() +
+  labs(fill = "Mean Value")
+
+```
+
+The differences can also be seen in disconnect between total aid disbursements and fragmentation which interestingly does not follow in lockstep with this increased funding.
+
+```{r}
+#| label: fig-plots2
+#| fig-cap: "Average Fragmentation and Total Aid Overall by Panel Year" 
+#| fig-subcap:
+#|   - "Fragmentation"
+#|   - "Aid" 
+#| layout-ncol: 2
+summary_data <- panel_aid_admin1 %>%
+  group_by(paymentyear) %>%
+  summarise(
+    mean_frag = mean(frag_index_admin1, na.rm = TRUE),
+    total_aid = sum(total_aid_admin1, na.rm = TRUE),
+    count = n()
+  )
+
+# Plot 1: Progression of Fragmentation by year
+ggplot(summary_data, aes(x = paymentyear, y = mean_frag)) +
+  geom_line(color = "black", size = 1) +
+  geom_point(color = "black") +
+  labs(
+    x = "Year",
+    y = "Mean HHI"
+  ) +
+  theme_minimal()
+
+# Plot 2: Progression of Total Aid by year
+ggplot(summary_data, aes(x = paymentyear, y = total_aid)) +
+  geom_line(color = "black", size = 1) +
+  geom_point(color = "black") +
+  labs(
+    x = "Year",
+    y = "Total Aid"
+  ) +
+  theme_minimal()
+
+
+
+```
+
+This pattern is even clearer when plotting at the national level.
+
+```{r}
+#| label: fig-plots3
+#| fig-cap: "Mean Subgovernmental Scores by ADM1 and ADM2 in Kenya 2015" 
+#| fig-subcap:
+#|   - "ADM1"
+#|   - "ADM2" 
+#| layout-ncol: 2
+#| 
+admin1_sf <- shp_admin1%>%
+  left_join(panel_aid_admin1, by = c("GID_0", "GID_1"))%>%
+  filter(GID_0 == "KEN" & paymentyear == 2015)
+
+ggplot(data = admin1_sf) +
+  geom_sf(aes(fill = mean_sgq_admin1)) +
+  scale_fill_viridis_c(option = "viridis", na.value = "grey90") +
+  theme_minimal() +
+  labs(fill = "Mean Value")
+
+admin2_sf <- africa_admin2%>%
+  left_join(panel_aid_admin2, by =c("GID_0", "GID_1", "GID_2"))%>%
+  filter(GID_0 == "KEN" & paymentyear == 2015)
+
+ggplot(data = admin2_sf) +
+  geom_sf(aes(fill = mean_sgq_admin2)) +
+  scale_fill_viridis_c(option = "viridis", na.value = "grey90") +
+  theme_minimal() +
+  labs(fill = "Mean Value")
+
+```
+
+```{r}
+#| label: fig-plots3
+#| fig-cap: "Mean Subgovernmental Scores by ADM1 and ADM2 in Kenya 2015" 
+#| fig-subcap:
+#|   - "ADM1"
+#|   - "ADM2" 
+#| layout-ncol: 2
+#| 
+admin1_sf <- shp_admin1%>%
+  left_join(panel_aid_admin1, by = c("GID_0", "GID_1"))%>%
+  filter(GID_0 == "KEN" & paymentyear == 2015)
+
+ggplot(data = admin1_sf) +
+  geom_sf(aes(fill = mean_sgq_admin1)) +
+  scale_fill_viridis_c(option = "viridis", na.value = "grey90") +
+  theme_minimal() +
+  labs(fill = "Mean Value")
+
+admin2_sf <- africa_admin2%>%
+  left_join(panel_aid_admin2, by =c("GID_0", "GID_1", "GID_2"))%>%
+  filter(GID_0 == "KEN" & paymentyear == 2015)
+
+ggplot(data = admin2_sf) +
+  geom_sf(aes(fill = mean_sgq_admin2)) +
+  scale_fill_viridis_c(option = "viridis", na.value = "grey90") +
+  theme_minimal() +
+  labs(fill = "Mean Value")
+
+```
+
+## Model ADM1
+
+We first fit the two models as show below for each fragmentation method we constructed, as the literature points towards the specific pheonoma each measure seeks to address. We don't include the
+
+$$
+\text{Fixed Effects: } \text{mean_nl}_{i,t-1} = \beta_0 + \beta_1 \log(\text{total_aid_admin1}_{i,t}) + \beta_2 \text{frag_index_admin1}_{i,t} + \beta_3 \left[\log(\text{total_aid_admin1}_{i,t}) \cdot \text{frag_index_admin1}_{i,t}\right] + \beta_4 \text{mean_sgq_admin1}_{i,t} + \text{state_fixed_effects}_i + \varepsilon_{i,t}
+$$
+
+$$
+\text{Random Effects: } \text{mean_nl}_{i,t-1} = \beta_0 + \beta_1 \log(\text{total_aid_admin1}_{i,t}) + \beta_2 \text{frag_index_admin1}_{i,t} + \beta_3 \left[\log(\text{total_aid_admin1}_{i,t}) \cdot \text{frag_index_admin1}_{i,t}\right] + \beta_4 \log(\text{total_aid_admin1}_{i,t}) + \varepsilon_{i,t}
+$$
+
+```{r}
+#| echo: false
+
+#Fixed Effects
+fe_hhi <- plm(mean_nl ~ lag(log(total_aid_admin1),1) * lag(frag_index_admin1,1) * mean_sgq_admin1 + ge_pct, 
+                    data = panel_aid_admin1,
+                    effect="individual",
+                    index = c("GID_1", "paymentyear"), 
+                    model = "within")
+
+fe_1 <- plm(lag(mean_nl,1) ~ log(total_aid_admin1) * frag_1_admin1 + mean_sgq_admin1 + ge_pct, 
+                    data = panel_aid_admin1,
+                    index = c("GID_1", "paymentyear"), 
+                    effect = "twoways",
+                    model = "within")
+
+fe_3 <- plm(lag(mean_nl,1) ~ log(total_aid_admin1) * frag_3_admin1 + mean_sgq_admin1 + ge_pct, 
+                    data = panel_aid_admin1,
+                    index = c("GID_1", "paymentyear"), 
+                    effect = "twoways",
+                    model = "within")
+
+fe_10 <- plm(lag(mean_nl,1) ~ log(total_aid_admin1) * frag_below10_admin1 + mean_sgq_admin1 + ge_pct, 
+                    data = panel_aid_admin1,
+                    index = c("GID_1", "paymentyear"),
+                    effect = "twoways",
+                    model = "within")
+
+fe_count <- plm(lag(mean_nl,1) ~ log(total_aid_admin1) * donor_count_admin1 + mean_sgq_admin1 + ge_pct, 
+                    data = panel_aid_admin1,
+                    index = c("GID_1", "paymentyear"), 
+                    effect = "twoways",
+                    model = "within")
+
+mods <- lapply(ls(pattern = "^fe"), get)
+
+
+suppressWarnings(stargazer(mods, type = "text"))
+
+```
+
+```{r}
+#Random Effects
+random_hhi <-  plm(lag(mean_nl,1) ~ log(total_aid_admin1) * frag_index_admin1 * mean_sgq_admin1 + mean_svc_admin1 + mean_fac_admin1 + ge_pct + distance_to_capital + log_avg_pop_admin1 + nearest_city_dist + Urban_share + avg_spei_admin1, 
+                    data = panel_aid_admin1,
+                    index = c("GID_1", "paymentyear"), 
+                    model="random")
+
+random_1 <-  plm(lag(mean_nl,1) ~ log(total_aid_admin1) * frag_1_admin1 + mean_sgq_admin1 + mean_svc_admin1 + mean_fac_admin1 + ge_pct + distance_to_capital + log_avg_pop_admin1 + nearest_city_dist + Urban_share + avg_spei_admin1, 
+                    data = panel_aid_admin1,
+                    index = c("GID_1", "paymentyear"), 
+                    model="random")
+
+random_3 <-  plm(lag(mean_nl,1) ~ log(total_aid_admin1) * frag_3_admin1 + mean_sgq_admin1 + mean_svc_admin1 + mean_fac_admin1 + ge_pct + distance_to_capital + log_avg_pop_admin1 + nearest_city_dist + Urban_share + avg_spei_admin1, 
+                    data = panel_aid_admin1,
+                    index = c("GID_1", "paymentyear"), 
+                    model="random")
+
+random_10 <-  plm(lag(mean_nl,1) ~ log(total_aid_admin1) * frag_below10_admin1 + mean_sgq_admin1 + mean_svc_admin1 + mean_fac_admin1 + ge_pct + distance_to_capital + log_avg_pop_admin1 + nearest_city_dist + Urban_share + avg_spei_admin1, 
+                    data = panel_aid_admin1,
+                    index = c("GID_1", "paymentyear"), 
+                    model="random")
+
+random_count <-  plm(lag(mean_nl,1) ~ log(total_aid_admin1) * donor_count_admin1 + mean_sgq_admin1 + mean_svc_admin1 + mean_fac_admin1 + ge_pct + distance_to_capital + log_avg_pop_admin1 + nearest_city_dist + Urban_share + avg_spei_admin1, 
+                    data = panel_aid_admin1,
+                    index = c("GID_1", "paymentyear"), 
+                    model="random")
+
+
+mods <- lapply(ls(pattern = "^random"), get)
+
+
+suppressWarnings(stargazer(mods, type = "text"))
+
+```
+
+Random Effects (AMD1): When shifting from the fixed effects model to random we include a series of controls around the spatial location of the ADM1, distance to capital which is computed using geodisnic distance and converted to KM and the logged average population. With their inclusion we see the effects are what we would have expected with more population or being closer to the capital we see a higher value in night lights.
+
+## Model ADM2
+
+We will run the same models as before but use ADM2's as the units of observation in place of ADM1.
+
+```{r}
+#| echo: false
+
+#Fixed Effects
+fe2_hhi <- plm(lag(mean_nl,1) ~ log(total_aid_admin2) * frag_index_admin2 + mean_sgq_admin2 + ge_pct, 
+                    data = panel_aid_admin2,
+                    index = c("GID_2", "paymentyear"), 
+                    effect = "twoways",
+                    model = "within")
+
+fe2_1 <- plm(lag(mean_nl,1) ~ log(total_aid_admin2) * frag_1_admin2 + mean_sgq_admin2 + ge_pct, 
+                    data = panel_aid_admin2,
+                    index = c("GID_2", "paymentyear"), 
+                    effect = "twoways",
+                    model = "within")
+
+fe2_3 <- plm(lag(mean_nl,1) ~ log(total_aid_admin2) * frag_3_admin2 + mean_sgq_admin2 + ge_pct, 
+                    data = panel_aid_admin2,
+                    index = c("GID_2", "paymentyear"), 
+                    effect = "twoways",
+                    model = "within")
+
+fe2_10 <- plm(lag(mean_nl,1) ~ log(total_aid_admin2) * frag_below10_admin2 + mean_sgq_admin2 + ge_pct, 
+                    data = panel_aid_admin2,
+                    index = c("GID_2", "paymentyear"),
+                    effect = "twoways",
+                    model = "within")
+
+fe2_count <- plm(lag(mean_nl,1) ~ log(total_aid_admin2) * donor_count_admin2 + mean_sgq_admin2 + ge_pct, 
+                    data = panel_aid_admin2,
+                    index = c("GID_2", "paymentyear"), 
+                    effect = "twoways",
+                    model = "within")
+
+mods <- lapply(ls(pattern = "^fe2"), get)
+
+
+suppressWarnings(stargazer(mods, type = "text"))
+
+```
+
+```{r}
+#Random Effects
+random2_hhi <-  plm(lag(mean_nl,1) ~ log(total_aid_admin1) * frag_index_admin1 + mean_sgq_admin1 + mean_svc_admin1 + mean_fac_admin1 + ge_pct + distance_to_capital + log_avg_pop_admin1 + nearest_city_dist + Urban_share + avg_spei_admin1, 
+                    data = panel_aid_admin1,
+                    index = c("GID_1", "paymentyear"), 
+                    model="random")
+
+random2_1 <-  plm(lag(mean_nl,1) ~ log(total_aid_admin1) * frag_1_admin1 + mean_sgq_admin1 + mean_svc_admin1 + mean_fac_admin1 + ge_pct + distance_to_capital + log_avg_pop_admin1 + nearest_city_dist + Urban_share + avg_spei_admin1, 
+                    data = panel_aid_admin1,
+                    index = c("GID_1", "paymentyear"), 
+                    model="random")
+
+random2_3 <-  plm(lag(mean_nl,1) ~ log(total_aid_admin1) * frag_3_admin1 + mean_sgq_admin1 + mean_svc_admin1 + mean_fac_admin1 + ge_pct + distance_to_capital + log_avg_pop_admin1 + nearest_city_dist + Urban_share + avg_spei_admin1, 
+                    data = panel_aid_admin1,
+                    index = c("GID_1", "paymentyear"), 
+                    model="random")
+
+random2_10 <-  plm(lag(mean_nl,1) ~ log(total_aid_admin1) * frag_below10_admin1 + mean_sgq_admin1 + mean_svc_admin1 + mean_fac_admin1 + ge_pct + distance_to_capital + log_avg_pop_admin1 + nearest_city_dist + Urban_share + avg_spei_admin1, 
+                    data = panel_aid_admin1,
+                    index = c("GID_1", "paymentyear"), 
+                    model="random")
+
+random2_count <-  plm(lag(mean_nl,1) ~ log(total_aid_admin1) * donor_count_admin1 + mean_sgq_admin1 + mean_svc_admin1 + mean_fac_admin1 + ge_pct + distance_to_capital + log_avg_pop_admin1 + nearest_city_dist + Urban_share + avg_spei_admin1, 
+                    data = panel_aid_admin1,
+                    index = c("GID_1", "paymentyear"), 
+                    model="random")
+
+
+mods <- lapply(ls(pattern = "^random2"), get)
+
+
+suppressWarnings(stargazer(mods, type = "text"))
+
+```
+
+# Addressing Mispecifcation
+
+```{r}
+
+pcdtest(lag(mean_nl,1) ~ log(total_aid_admin1) * donor_count_admin1 + mean_sgq_admin1 + ge_pct, data = panel_aid_admin1,
+        index = c("GID_1", "paymentyear"))
+
+pwartest(lag(mean_nl,1) ~ log(total_aid_admin1) * donor_count_admin1 + mean_sgq_admin1 + ge_pct, data = panel_aid_admin1,
+        index = c("GID_1", "paymentyear"))
+
+pwtest(lag(mean_nl,1) ~ log(total_aid_admin1) * donor_count_admin1 + mean_sgq_admin1 + ge_pct, data = panel_aid_admin1,
+        index = c("GID_1", "paymentyear"))
+```
+
+## Comparing Marginal Effects
+
+```{r}
+plot_predictions(fe_hhi, condition = c("total_aid_admin1", "frag_index_admin1"))
+```
+
+```{r}
+plot_predictions(fe2_hhi, condition = c("total_aid_admin2", "frag_index_admin2"))
+
+```
+
+For both models we see the pick up of higher fragmentation being beneficial in higher aid environments.
+
+## Conclusion
+
+Based on the limited ability of our model to create concrete causal relationships between aid and fragmentation we can settle that the model provides some evidence towards the competition hypothesis that with increased aid revenue higher fragmentation leads towards higher mean night light radiance.
+
+## Next Steps for Further Research
+
+Following the research @dreher2015 and @iddawela2021 due to the endogeneity issues of administrative divisions it may make sense to incorporate a IV strategy. Further modeling of the spatial considerations of aid may also lead to interesting insights potentially through a grid approach.
