@@ -49,7 +49,7 @@ po/*~
 # RStudio Connect folder
 rsconnect/
 
-# Rds files
+# data files
 *.gpkg
 *.rds
 *.csv
@@ -57,4 +57,5 @@ rsconnect/
 *.dta
 *.sav
 *.xlsx
+*.nc
 # ini
