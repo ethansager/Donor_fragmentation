@@ -4,6 +4,8 @@ library(data.table)
 library(tidyr)
 library(here)
 library(ivreg)
+library(sf)
+library(zoo)
 
 # get country isos for gadm
 countries_iso3 <- read_csv(
@@ -13,37 +15,20 @@ countries_iso3 <- read_csv(
     distinct() %>%
     pull()
 
+
 # Read in data
 aid_data <- read_csv(here("00_rawdata", "GODAD_projectlevel.csv")) %>%
+    mutate(world_bank = ifelse(donor == "World Bank" & !precision_code %in% c("1", "2", "3"), 1, 0)) %>%
     filter(
         gid_0 %in%
             countries_iso3 &
             paymentyear >= 2005 &
             paymentyear <= 2015 &
             !is.na(latitude) &
-            !is.na(longitude)
+            !is.na(longitude) &
+            world_bank == 0
     )
 
-# Try to download GADM data, first attempting level 2 then falling back to level 1 if needed
-shp_list <- lapply(countries_iso3, function(country) {
-    result <- geodata::gadm(
-        country = country,
-        level = 2,
-        path = "00_rawdata/shapefiles/"
-    )
-    if (is.null(result)) {
-        # If level 2 fails, return level 1
-        message(paste0("Level 2 failed for ", country))
-        result <- geodata::gadm(
-            country = country,
-            level = 1,
-            path = "00_rawdata/shapefiles/"
-        )
-    } else {
-        message(paste0("Level 2 succeeded for ", country))
-    }
-    return(result)
-})
 
 donor_countries <- c(
     "Austria",
@@ -65,21 +50,19 @@ donor_countries <- c(
     "Sweden",
     "Switzerland",
     "United Kingdom",
-    "United States"
+    "United States",
+    "World Bank"
 )
 
 
 # Combine all shapefiles into one
-shp <- do.call(rbind, shp_list)
-shp <- sf::st_as_sf(shp)
+shp <- sf::read_sf("00_rawdata/shapefiles/gadm_admin2.shp")
+
 
 shp <- shp %>%
-# Assign GID_1 for those countries that don't have GID_2
+    # Assign GID_1 for those countries that don't have GID_2
     mutate(GID_2 = ifelse(is.na(GID_2), GID_1, GID_2))
 
-# Check which country ISO codes in countries_iso3 don't have corresponding shapefiles
-countries_missing <- countries_iso3[!countries_iso3 %in% unique(shp$GID_0)]
-print(countries_missing)
 
 aid_points <- sf::st_as_sf(
     aid_data,
@@ -89,29 +72,27 @@ aid_points <- sf::st_as_sf(
 
 dat <- sf::st_join(aid_points, sf::st_make_valid(shp))
 
-dat <- dat %>% 
+dat <- dat %>%
     filter(donor %in% donor_countries)
 
 # Convert dat to data.table for speed
 setDT(dat)
 
 # Create HHI for admin2 level
-# Check if the column exists, if not use an alternative
 
-aid_data <-dat[,
-      .(
-          aid_amount = sum(abs(disb_loc_evensplit), na.rm = TRUE)
-      ),
-      by = .(GID_0, GID_1, GID_2, year = paymentyear, donor)
-  ]
+aid_data <- dat[,
+    .(
+        aid_amount = sum(abs(disb_loc_evensplit), na.rm = TRUE)
+    ),
+    by = .(GID_0, GID_1, GID_2, year = paymentyear, donor)
+]
 
-
-
-# Read in the fractionization data for 
+# Read in the fractionization data for
 frac_data <- read_csv("00_rawdata/DPI2020.csv") %>%
     mutate(
         countryname = str_replace(countryname, "USA", "United States"),
         countryname = str_replace(countryname, "UK", "United Kingdom"),
+        countryname = str_replace(countryname, "FRG/Germany", "Germany"),
         frac_full = if_else(
             countryname == "United States",
             frac,
@@ -120,25 +101,68 @@ frac_data <- read_csv("00_rawdata/DPI2020.csv") %>%
     ) %>%
     filter(countryname %in% donor_countries & year >= 2005 & year <= 2015) %>%
     select(donor = countryname, year, frac_full)
+# Estimate weighted average of donor fraction for World Bank
 
 
+votes <- read_csv("00_rawdata/pdfs/wb_vote_shares.csv") %>%
+    mutate(
+        Country = str_replace(Country, "USA", "United States"),
+        Country = str_replace(Country, "UK", "United Kingdom")
+    ) %>%
+    pivot_longer(
+        cols = starts_with("Vote_"),
+        names_to = "year",
+        values_to = "vote_share"
+    ) %>%
+    mutate(year = str_replace(year, "Vote_", "")) %>%
+    filter(year != "avg") %>%
+    mutate(year = as.numeric(year)) %>%
+    complete(Country = unique(Country), year = 2005:2015) %>%
+    group_by(Country) %>%
+    mutate(vote_share = na.approx(vote_share, na.rm = TRUE, rule = 2)) %>%
+    ungroup() %>%
+    left_join(
+        frac_data %>% select(donor, year, frac_full),
+        by = c("Country" = "donor", "year")
+    ) %>%
+    group_by(year) %>%
+    summarise(
+        frac_full = weighted.mean(frac_full, vote_share, na.rm = TRUE),
+        .groups = "drop"
+    ) %>%
+    mutate(donor = "World Bank")
+
+
+
+frac_data <- bind_rows(frac_data, votes)
+
+donor_countries_look <- frac_data %>%
+    select(donor) %>%
+    distinct() %>%
+    pull()
 
 construct_shift_share_iv_strict <- function(
     aid_data, # columns: region_id, year, donor, aid_amount
     frac_data, # columns: donor, year, frac
     panel_data, # columns: region_id, year, country, pop_it (optional)
-    aid_threshold = 0,  # Added missing comma here
+    aid_threshold = 0, # threshold for considering aid as received
     region_id, # region ID column in aid_data
     start_year = 2005, # start year for the analysis
     end_year = 2015 # end year for the analysis
-) {
+    ) {
     # Step 1: Define p_ji = avg(1(aid_ijt > 0)) over the specified time period
     pji <- aid_data %>%
+        complete(
+            !!sym(region_id),
+            donor,
+            year = start_year:end_year,
+            fill = list(aid_amount = 0, received_aid = 0)
+        ) %>%
         mutate(received_aid = ifelse(aid_amount > aid_threshold, 1, 0)) %>%
         # Use the dynamic region_id parameter instead of hardcoded value
         group_by(!!sym(region_id), donor) %>%
-        summarise(pji = sum(received_aid, na.rm = TRUE)/11, .groups = "drop") # fixed across time
-    
+        summarise(pji = sum(received_aid, na.rm = TRUE) / 11, .groups = "drop") # fixed across time
+
     # Rename the column to ensure consistent joining
     names(pji)[names(pji) == region_id] <- "region_id"
 
@@ -158,17 +182,14 @@ construct_shift_share_iv_strict <- function(
         summarise(IV = sum(iv_component, na.rm = TRUE), .groups = "drop") %>%
         arrange(region_id, year) %>%
         group_by(region_id) %>%
-        mutate(IV_lag = lag(IV)) %>%
+        mutate(IV_lag = dplyr::lag(IV, order_by = year)) %>% # enforce year order
         ungroup()
 
     return(iv_data)
 }
 
-
-
 # Create the IV admin2
-panel_aid_admin2 <- read_csv("01_panel_data/panel_aid_admin2.csv")%>%
-    rename(year = paymentyear) 
+panel_aid_admin2 <- read_csv("01_panel_data/panel_aid_admin2.csv")
 
 results <- construct_shift_share_iv_strict(
     aid_data = aid_data,
@@ -177,17 +198,13 @@ results <- construct_shift_share_iv_strict(
     region_id = "GID_2"
 )
 
-
 # Merge the IV with the panel data
 panel_aid_admin2 <- panel_aid_admin2 %>%
-    left_join(results, by = c("GID_2" = "region_id", "year")) %>%
-    mutate(IV = ifelse(is.na(IV), 0, IV)) %>%
-    mutate(IV_lag = lag(IV))
+    left_join(results, by = c("GID_2" = "region_id", "year"))
 
 # Create the IV admin1
 
-panel_aid_admin1 <- read_csv("01_panel_data/panel_aid_admin1.csv")%>%
-    rename(year = paymentyear) 
+panel_aid_admin1 <- read_csv("01_panel_data/panel_aid_admin1.csv")
 
 results <- construct_shift_share_iv_strict(
     aid_data = aid_data,
@@ -196,16 +213,11 @@ results <- construct_shift_share_iv_strict(
     region_id = "GID_1"
 )
 
-
 # Merge the IV with the panel data
 panel_aid_admin1 <- panel_aid_admin1 %>%
-    left_join(results, by = c("GID_1" = "region_id", "year")) %>%
-    mutate(IV = ifelse(is.na(IV), 0, IV)) %>%
-    mutate(IV_lag = lag(IV))
+    left_join(results, by = c("GID_1" = "region_id", "year"))
 
-# Save the data 
+# Save the data
 
-write_csv(panel_aid_admin2, "01_panel_data/panel_aid_admin2.csv")
-write_csv(panel_aid_admin1, "01_panel_data/panel_aid_admin1.csv")
-
-
+write_csv(panel_aid_admin2, "01_panel_data/panel_aid_admin2_fin.csv")
+write_csv(panel_aid_admin1, "01_panel_data/panel_aid_admin1_fin.csv")

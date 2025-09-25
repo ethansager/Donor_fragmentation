@@ -1,8 +1,8 @@
 ### DiD ####
-# Regression Analysis 
-if (!require("pacman")) 
-  install.packages("pacman"); 
-
+# Regression Analysis
+if (!require("pacman")) {
+  install.packages("pacman")
+}
 pacman::p_load(
   tidyverse,
   here,
@@ -21,125 +21,442 @@ pacman::p_load(
 )
 
 
-panel_aid_admin1 <-  read_csv("01_panel_data/panel_aid_admin1.csv")
-panel_aid_admin2 <- read_csv("01_panel_data/panel_aid_admin2.csv")
+panel_aid_admin1 <- read_csv("01_panel_data/panel_aid_admin1_fin.csv")
+panel_aid_admin2 <- read_csv("01_panel_data/panel_aid_admin2_fin.csv")
 
-admin1_afro <- read_csv("00_rawdata/ab_raw/processed/admin1_afro_panel.csv")%>%
-  select(year, GID_0, GID_1, starts_with("mean_"), afro_count, wave)
- 
-admin2_afro <- read_csv("00_rawdata/ab_raw/processed/admin2_afro_panel.csv")%>%
-  select(year, GID_0, GID_1, GID_2, starts_with("mean_"), afro_count, wave)
-
-
-# merge in the panel 
-panel_aid_admin1 <- panel_aid_admin1 %>%
-select(-c("mean_sgq_admin1", "mean_svc_admin1", "mean_fac_admin1")) %>%
-  left_join(admin1_afro,
-  by= c("year", "GID_0", "GID_1"))
-
-panel_aid_admin2 <- panel_aid_admin2 %>%
-select(-c("mean_sgq_admin2", "mean_svc_admin2", "mean_fac_admin2")) %>%
-  left_join(admin2_afro,
-  by= c("year", "GID_0", "GID_1", "GID_2"))
 
 # Ensure proper ordering before applying lag()
 panel_aid_admin1 <- panel_aid_admin1 %>%
-  arrange(GID_1, year) %>%  # Sort before grouping
+  arrange(GID_1, year) %>% # Sort before grouping
   group_by(GID_1) %>%
+  rename(mean_nl = mean) %>%
   mutate(
-    lag_mean_nl = dplyr::lag(mean_nl),
-    # Only first observation per group will be NA
+    lag_mean_nl = dplyr::lag(mean_nl), # Get the value from the previous year
     nl_growth = case_when(
-      is.na(lag_mean_nl) ~ NA_real_,
-      lag_mean_nl == 0 & mean_nl == 0 ~ log(mean_nl + 0.01),  # No growth when both are zero
-      lag_mean_nl == 0 ~ log(mean_nl + 0.01),  # Handle zero in previous period
-      TRUE ~ log((mean_nl + 0.01) / (lag_mean_nl + 0.01))  # Regular case with small constant
-    )
+      is.na(lag_mean_nl) ~ NA_real_, # No growth for the first year
+      TRUE ~ ((log(mean_nl + 0.01) - log(lag_mean_nl + 0.01)) / log(lag_mean_nl + 0.01)) * 100 # Calculate percentage growth with logging
+    ),
+    lag_hhi_admin1 = dplyr::lag(frag_index_admin1),
+    lag_pop_admin1 = dplyr::lag(ln_pop_admin1),
+    lag_donor_count_admin1 = dplyr::lag(donor_count_admin1),
+    lag_total_proj_admin1 = dplyr::lag(total_proj_admin1),
+    lag_total_aid_admin1 = log(lag(total_aid_admin1) + .01)
   ) %>%
-  ungroup() 
+  filter(
+    nl_growth > quantile(nl_growth, probs = .05, na.rm = TRUE) &
+      nl_growth < quantile(nl_growth, probs = .95, na.rm = TRUE)
+  ) %>%
+  ungroup()
+
 
 panel_aid_admin2 <- panel_aid_admin2 %>%
-  arrange(GID_2, year) %>%  # Sort before grouping
+  arrange(GID_2, year) %>% # Sort before grouping
   group_by(GID_2) %>%
+  rename(mean_nl = mean) %>%
   mutate(
-    lag_mean_nl = dplyr::lag(mean_nl),
-    # Only first observation per group will be NA
+    lag_mean_nl = dplyr::lag(mean_nl), # Get the value from the previous year
     nl_growth = case_when(
-      is.na(lag_mean_nl) ~ NA_real_,
-      lag_mean_nl == 0 & mean_nl == 0 ~ log(mean_nl + 0.01),  # No growth when both are zero
-      lag_mean_nl == 0 ~ log(mean_nl + 0.01),  # Handle zero in previous period
-      TRUE ~ log((mean_nl + 0.01) / (lag_mean_nl + 0.01))  # Regular case with small constant
-    )
+      is.na(lag_mean_nl) ~ NA_real_, # No growth for the first year
+      TRUE ~ ((log(mean_nl + 0.01) - log(lag_mean_nl + 0.01)) / log(lag_mean_nl + 0.01)) * 100 # Calculate percentage growth with logging
+    ),
+    lag_hhi_admin2 = dplyr::lag(frag_index_admin2),
+    lag_pop_admin2 = dplyr::lag(ln_pop_admin2),
+    lag_donor_count_admin2 = dplyr::lag(donor_count_admin2),
+    lag_total_proj_admin2 = dplyr::lag(total_proj_admin2),
+    lag_total_aid_admin2 = log(lag(total_aid_admin2) + .01)
   ) %>%
-  ungroup() 
-
-
-# Group by five year? 
-
-# Create summary table for panel_aid_admin1
-summary_table_admin1 <- panel_aid_admin1 %>%
-  select(mean_nl, total_aid_admin1, frag_index_admin1, mean_sgq_admin1, nl_growth) %>%
-  tbl_summary(
-    statistic = all_continuous() ~ "{mean} ({sd})"
+  filter(
+    nl_growth > quantile(nl_growth, probs = .05, na.rm = TRUE) &
+      nl_growth < quantile(nl_growth, probs = .95, na.rm = TRUE)
   ) %>%
-  modify_header(label = "**Variable**")
+  ungroup()
 
-# Create summary table for panel_aid_admin2
-summary_table_admin2 <- panel_aid_admin2 %>%
-  select(mean_nl, total_aid_admin2, frag_index_admin2, mean_sgq_admin2, nl_growth) %>%
-  tbl_summary(
-    statistic = all_continuous() ~ "{mean} ({sd})"
-  ) %>%
-  modify_header(label = "**Variable**")
 
-# Print the summary tables
-# Generate LaTeX output
-latex_output_1 <- as_gt(summary_table_admin1) %>% gt::as_latex()
-
-# Write to .tex files
-writeLines(latex_output_1, "summary_table_admin1.tex")
-
-# Generate LaTeX output for another table if needed
-latex_output_2 <- as_gt(summary_table_admin2) %>% gt::as_latex()
-
-# Write to a different .tex file
-writeLines(latex_output_2, "summary_table_admin2.tex")
-
+# Split the sample into high and low SGQ
 panel_aid_admin1 <- panel_aid_admin1 %>%
   mutate(
-med_sgq_admin1 = if_else(mean_sgq_admin1 > (mean(mean_sgq_admin1, na.rm = TRUE) + sd(mean_sgq_admin1, na.rm = TRUE)), 1, 0),
+    med_sgq_admin1 = if_else(mean_sgq_admin1 > quantile(mean_sgq_admin1, 0.75, na.rm = TRUE), 1, 0)
   )
 
 panel_aid_admin2 <- panel_aid_admin2 %>%
   mutate(
-med_sgq_admin2 = if_else(mean_sgq_admin2 > (mean(mean_sgq_admin2, na.rm = TRUE) + sd(mean_sgq_admin2, na.rm = TRUE)), 1, 0),
+    med_sgq_admin2 = if_else(mean_sgq_admin2 > quantile(mean_sgq_admin2, 0.75, na.rm = TRUE), 1, 0)
   )
 
-high_admin1 <- panel_aid_admin1[panel_aid_admin1$med_sgq_admin1 == 1, ]
-low_admin1 <- panel_aid_admin1[panel_aid_admin1$med_sgq_admin1 != 1, ]
+panel_aid_admin1 %>%
+  group_by(med_sgq_admin1) %>%
+  filter(!is.na(nl_growth) & is.finite(nl_growth)) %>%
+  summarise(
+    mean.growth = mean(nl_growth, na.rm = TRUE),
+    sd_growth = sd(nl_growth, na.rm = TRUE),
+    n = n()
+  )
 
-high_admin2 <- panel_aid_admin2[panel_aid_admin2$med_sgq_admin2 == 1, ]
-low_admin2 <- panel_aid_admin2[panel_aid_admin2$med_sgq_admin2 != 1, ]
+high_admin1 <- panel_aid_admin1 %>%
+  filter(panel_aid_admin1$med_sgq_admin1 == 1)
 
-#### Table 1 Panel A
-high_1 <- fixest::feols(log(lag_mean_nl + 0.01) ~ donor_count_admin1 * total_proj_admin1| GID_0^year + GID_1, data = high_admin1)
-low_1 <- fixest::feols(log(lag_mean_nl + 0.01) ~ donor_count_admin1 * total_proj_admin1| GID_0^year + GID_1, data = low_admin1)
+low_admin1 <- panel_aid_admin1 %>%
+  filter(panel_aid_admin1$med_sgq_admin1 == 0)
 
-high_2  <- fixest::feols(log(lag_mean_nl + 0.01)  ~ donor_count_admin2 * total_proj_admin2 | GID_0^year + GID_2, high_admin2)
-low_2 <- fixest::feols(log(lag_mean_nl + 0.01) ~ donor_count_admin2 * total_proj_admin2 | GID_0^year + GID_2, low_admin2)
+high_admin2 <- panel_aid_admin2 %>%
+  filter(med_sgq_admin2 == 1)
+
+low_admin2 <- panel_aid_admin2 %>%
+  filter(med_sgq_admin2 == 0)
+
+summary(high_admin1)
+
+# Update regressions to use lagged variables
+#### Table 1 Panel B
+perform_ols_analysis <- function(data, admin_level, outcome_var, cluster_var) {
+  # Harmonize variables by admin level
+  if (admin_level == "GID_1") {
+    data <- data %>%
+      dplyr::mutate(
+        total_aid = total_aid_admin1,
+        lag_log_pop = lag_pop_admin1,
+        lag_donor_count = lag_donor_count_admin1,
+        lag_total_proj = lag_total_proj_admin1,
+        lag_total_aid = lag_total_aid_admin1
+      )
+  } else if (admin_level == "GID_2") {
+    data <- data %>%
+      dplyr::mutate(
+        total_aid = total_aid_admin2,
+        lag_log_pop = lag_pop_admin2,
+        lag_donor_count = lag_donor_count_admin2,
+        lag_total_proj = lag_total_proj_admin2,
+        lag_total_aid = lag_total_aid_admin2
+      )
+  }
+
+  # Regress the outcome variable on predictors
+  stage_2_formula <- as.formula(
+    paste0(
+      outcome_var,
+      " ~ lag_donor_count * lag_total_proj + lag_total_aid + lag_log_pop"
+    )
+  )
+
+  stage_2 <- fixest::feols(
+    stage_2_formula,
+    cluster = cluster_var,
+    data = data
+  )
+
+  return(stage_2)
+}
 
 
-etable(high_1, low_1, high_2, low_2, tex = TRUE, file = "fe_models.tex")
+high_1_ols <- perform_ols_analysis(high_admin1, "GID_1", "nl_growth", "GID_0")
+low_1_ols <- perform_ols_analysis(low_admin1, "GID_1", "nl_growth", "GID_0")
+high_2_ols <- perform_ols_analysis(high_admin2, "GID_2", "nl_growth", "GID_0")
+low_2_ols <- perform_ols_analysis(low_admin2, "GID_2", "nl_growth", "GID_0")
+
+# Remove the LaTeX file for Table 1 OLS if it exists
+if (file.exists("table1_ols.tex")) {
+  file.remove("table1_ols.tex")
+}
+
+etable(
+  high_1_ols,
+  low_1_ols,
+  high_2_ols,
+  low_2_ols,
+  headers = c("High Admin1", "Low Admin1", "High Admin2", "Low Admin2"),
+  dict = c(
+    lag_donor_count = "Lag Donor Count",
+    lag_total_proj = "Lag Total Projects",
+    lag_log_pop = "Lag LN(Population)",
+    `lag_donor_count:lag_total_proj` = "Lag Donor × Lag Projects",
+    lag_total_aid = "Lag LN(Total Aid)"
+  ),
+  se.below = TRUE,
+  signif.code = c("***" = 0.01, "**" = 0.05, "*" = 0.1), # <-- proper format
+  fitstat = c("n", "r2"),
+  tex = TRUE, # Save as LaTeX
+  file = "table1_ols.tex" # Specify output file
+)
+
+#### Table 1 Panel B
+perform_fe_analysis <- function(data, admin_level, outcome_var, cluster_var) {
+  # Harmonize variables by admin level
+  if (admin_level == "GID_1") {
+    data <- data %>%
+      dplyr::mutate(
+        total_aid = total_aid_admin1,
+        lag_log_pop = lag_pop_admin1,
+        lag_donor_count = lag_donor_count_admin1,
+        lag_total_proj = lag_total_proj_admin1,
+        lag_total_aid = lag_total_aid_admin1
+      )
+  } else if (admin_level == "GID_2") {
+    data <- data %>%
+      dplyr::mutate(
+        total_aid = total_aid_admin2,
+        lag_log_pop = lag_pop_admin2,
+        lag_donor_count = lag_donor_count_admin2,
+        lag_total_proj = lag_total_proj_admin2,
+        lag_total_aid = lag_total_aid_admin2
+      )
+  }
+
+  # Regress the outcome variable on predictors
+  stage_2_formula <- as.formula(
+    paste0(
+      outcome_var,
+      " ~ lag_donor_count * lag_total_proj + lag_total_aid + lag_log_pop | GID_0^year + ",
+      admin_level
+    )
+  )
+
+  stage_2 <- fixest::feols(
+    stage_2_formula,
+    cluster = cluster_var,
+    data = data
+  )
+
+  return(stage_2)
+}
+
+# Remove the LaTeX file for Table 1 OLS if it exists
+if (file.exists("table1_fe.tex")) {
+  file.remove("table1_fe.tex")
+}
+
+high_1 <- perform_fe_analysis(high_admin1, "GID_1", "nl_growth", "GID_0")
+low_1 <- perform_fe_analysis(low_admin1, "GID_1", "nl_growth", "GID_0")
+high_2 <- perform_fe_analysis(high_admin2, "GID_2", "nl_growth", "GID_0")
+low_2 <- perform_fe_analysis(low_admin2, "GID_2", "nl_growth", "GID_0")
+
+etable(
+  high_1,
+  low_1,
+  high_2,
+  low_2,
+  headers = c("High Admin1", "Low Admin1", "High Admin2", "Low Admin2"),
+  dict = c(
+    lag_donor_count = "Lag Donor Count",
+    lag_total_proj = "Lag Total Projects",
+    lag_log_pop = "Lag LN(Population)",
+    `lag_donor_count:lag_total_proj` = "Lag Donor × Lag Projects",
+    lag_total_aid = "Lag LN(Total Aid)"
+  ),
+  se.below = TRUE,
+  signif.code = c("***" = 0.01, "**" = 0.05, "*" = 0.1), # <-- proper format
+  fitstat = c("n", "r2"),
+  tex = TRUE, # Save as LaTeX
+  file = "table1_fe.tex" # Specify output file
+)
+
+### CFA for country govs table 1 Panel C
+perform_cfa_analysis <- function(data, admin_level, outcome_var, iv_var, cluster_var) {
+  # Harmonize variables by admin level
+  if (admin_level == "GID_1") {
+    data <- data %>%
+      dplyr::mutate(
+        total_aid = total_aid_admin1,
+        lag_log_pop = lag_pop_admin1,
+        lag_donor_count = lag_donor_count_admin1,
+        lag_total_proj = lag_total_proj_admin1,
+        lag_total_aid = lag_total_aid_admin1
+      )
+  } else if (admin_level == "GID_2") {
+    data <- data %>%
+      dplyr::mutate(
+        total_aid = total_aid_admin2,
+        lag_log_pop = lag_pop_admin2,
+        lag_donor_count = lag_donor_count_admin2,
+        lag_total_proj = lag_total_proj_admin2,
+        lag_total_aid = lag_total_aid_admin2
+      )
+  }
+
+  # Stage 1: Regress total aid on the instrumental variable
+  stage_1_formula <- as.formula(
+    paste0(
+      "total_aid ~ ", iv_var, " + lag_log_pop | GID_0^year + ", admin_level
+    )
+  )
+
+  stage_1 <- fixest::feols(
+    stage_1_formula,
+    cluster = cluster_var,
+    data = data
+  )
+
+  # Add CFA residuals to the dataset
+  data <- data %>%
+    filter(!is.na(nl_growth)) %>%
+    dplyr::mutate(cfa = resid(stage_1))
+
+  # Stage 2: Regress the outcome variable on predictors and CFA residuals
+  stage_2_formula <- as.formula(
+    paste0(
+      outcome_var,
+      " ~ lag_donor_count * lag_total_proj + lag_total_aid + lag_log_pop + cfa | GID_0^year + ",
+      admin_level
+    )
+  )
+
+  stage_2 <- fixest::feols(
+    stage_2_formula,
+    cluster = cluster_var,
+    data = data
+  )
+
+  return(stage_2)
+}
+
+# Perform the analysis for high and low admin1 and admin2
+stage_2_high_admin1 <- perform_cfa_analysis(high_admin1, "GID_1", "nl_growth", "IV_lag", "GID_1")
+stage_2_low_admin1 <- perform_cfa_analysis(low_admin1, "GID_1", "nl_growth", "IV_lag", "GID_1")
+stage_2_high_admin2 <- perform_cfa_analysis(high_admin2, "GID_2", "nl_growth", "IV_lag", "GID_2")
+stage_2_low_admin2 <- perform_cfa_analysis(low_admin2, "GID_2", "nl_growth", "IV_lag", "GID_2")
+
+# Remove the LaTeX file for Table 2 CFE if it exists
+if (file.exists("table2_cfe.tex")) {
+  file.remove("table2_cfe.tex")
+}
+
+etable(
+  stage_2_high_admin1,
+  stage_2_low_admin1,
+  stage_2_high_admin2,
+  stage_2_low_admin2,
+  headers = c("High Admin1", "Low Admin1", "High Admin2", "Low Admin2"),
+  dict = c(
+    lag_donor_count = "Lag Donor Count",
+    lag_total_proj = "Lag Total Projects",
+    lag_log_pop = "Lag LN(Population)",
+    `lag_donor_count:lag_total_proj` = "Lag Donor × Lag Projects",
+    lag_total_aid = "Lag LN(Total Aid)",
+    cfa = "CFA Residuals"
+  ),
+  se.below = TRUE,
+  signif.code = c("***" = 0.01, "**" = 0.05, "*" = 0.1), # <-- proper format
+  fitstat = c("n", "r2"),
+  tex = TRUE, # Save as LaTeX
+  file = "table2_cfe.tex" # Specify output file
+)
+
+# Perform the analysis for high and low admin1 and admin2 HEALTH
+stage_2_high_admin1 <- perform_cfa_analysis(high_admin1, "GID_1", "u5m", "IV_lag", "GID_1")
+stage_2_low_admin1 <- perform_cfa_analysis(low_admin1, "GID_1", "u5m", "IV_lag", "GID_1")
+stage_2_high_admin2 <- perform_cfa_analysis(high_admin2, "GID_2", "u5m", "IV_lag", "GID_2")
+stage_2_low_admin2 <- perform_cfa_analysis(low_admin2, "GID_2", "u5m", "IV_lag", "GID_2")
 
 
-# Simple OLS regressions for comparison
-ols_high_1 <- lm(log(lag_mean_nl + 0.01) ~ donor_count_admin1 * total_proj_admin1, data = high_admin1)
-ols_low_1 <- lm(log(lag_mean_nl + 0.01) ~ donor_count_admin1 * total_proj_admin1, data = low_admin1)
-ols_high_2 <- lm(log(lag_mean_nl + 0.01) ~ donor_count_admin2 * total_proj_admin2, data = high_admin2)
-ols_low_2 <- lm(log(lag_mean_nl + 0.01) ~ donor_count_admin2 * total_proj_admin2, data = low_admin2)
+etable(
+  stage_2_high_admin1,
+  stage_2_low_admin1,
+  stage_2_high_admin2,
+  stage_2_low_admin2,
+  headers = c("High Admin1", "Low Admin1", "High Admin2", "Low Admin2"),
+  dict = c(
+    lag_donor_count = "Lag Donor Count",
+    lag_total_proj = "Lag Total Projects",
+    lag_log_pop = "Lag LN(Population)",
+    `lag_donor_count:lag_total_proj` = "Lag Donor × Lag Projects",
+    lag_total_aid = "Lag LN(Total Aid)",
+    cfa = "CFA Residuals"
+  ),
+  se.below = TRUE,
+  signif.code = c("***" = 0.01, "**" = 0.05, "*" = 0.1), # <-- proper format
+  fitstat = c("n", "r2"),
+  tex = TRUE, # Save as LaTeX
+  file = "table2_cfe_u5m.tex" # Specify output file
+)
 
-# Summarize the OLS models
-summary(ols_high_1)
-summary(ols_low_1)
-summary(ols_high_2)
-summary(ols_low_2)
+
+# Now we are just looking at frag indicators no interaction
+
+### CFA for country govs table 1 Panel C
+perform_cfa_analysis_frag <- function(data, admin_level, outcome_var, iv_var, cluster_var) {
+  # Harmonize variables by admin level
+  if (admin_level == "GID_1") {
+    data <- data %>%
+      dplyr::mutate(
+        total_aid = total_aid_admin1,
+        lag_log_pop = lag_pop_admin1,
+        lag_donor_count = lag_donor_count_admin1,
+        lag_total_proj = lag_total_proj_admin1,
+        lag_total_aid = lag_total_aid_admin1,
+        lag_hhi = frag_index_admin1
+      )
+  } else if (admin_level == "GID_2") {
+    data <- data %>%
+      dplyr::mutate(
+        total_aid = total_aid_admin2,
+        lag_log_pop = lag_pop_admin2,
+        lag_donor_count = lag_donor_count_admin2,
+        lag_total_proj = lag_total_proj_admin2,
+        lag_total_aid = lag_total_aid_admin2,
+        lag_hhi = frag_index_admin2
+      )
+  }
+
+  # Stage 1: Regress total aid on the instrumental variable
+  stage_1_formula <- as.formula(
+    paste0(
+      "total_aid ~ ", iv_var, " + lag_log_pop | GID_0^year + ", admin_level
+    )
+  )
+
+  stage_1 <- fixest::feols(
+    stage_1_formula,
+    cluster = cluster_var,
+    data = data
+  )
+
+  # Add CFA residuals to the dataset
+  data <- data %>%
+    dplyr::mutate(cfa = resid(stage_1))
+
+  # Stage 2: Regress the outcome variable on predictors and CFA residuals
+  stage_2_formula <- as.formula(
+    paste0(
+      outcome_var,
+      " ~ lag_hhi + lag_total_aid + lag_log_pop + cfa | GID_0^year + ",
+      admin_level
+    )
+  )
+
+  stage_2 <- fixest::feols(
+    stage_2_formula,
+    cluster = cluster_var,
+    data = data
+  )
+
+  return(stage_2)
+}
+
+# Perform the analysis for high and low admin1 and admin2
+frag_high_admin1 <- perform_cfa_analysis_frag(high_admin1, "GID_1", "nl_growth", "IV_lag", "GID_1")
+frag_low_admin1 <- perform_cfa_analysis_frag(low_admin1, "GID_1", "nl_growth", "IV_lag", "GID_1")
+frag_high_admin2 <- perform_cfa_analysis_frag(high_admin2, "GID_2", "nl_growth", "IV_lag", "GID_2")
+frag_low_admin2 <- perform_cfa_analysis_frag(low_admin2, "GID_2", "nl_growth", "IV_lag", "GID_2")
+
+
+etable(
+  frag_high_admin1,
+  frag_low_admin1,
+  frag_high_admin2,
+  frag_low_admin2,
+  headers = c("High Admin1", "Low Admin1", "High Admin2", "Low Admin2"),
+  dict = c(
+    lag_hhi = "Lag Frag Index",
+    lag_log_pop = "Lag LN(Population)",
+    lag_total_aid = "Lag LN(Total Aid)",
+    cfa = "CFA Residuals"
+  ),
+  se.below = TRUE,
+  signif.code = c("***" = 0.01, "**" = 0.05, "*" = 0.1), # <-- proper format
+  fitstat = c("n", "r2"),
+  tex = TRUE, # Save as LaTeX
+  file = "table2_cfe_frag_ind.tex" # Specify output file
+)
+
+
+
+DescTools::Desc(panel_aid_admin1$mean_sgq_admin1)

@@ -49,13 +49,20 @@ po/*~
 # RStudio Connect folder
 rsconnect/
 
+# 
+00_rawdata/
+
 # data files
 *.gpkg
 *.rds
 *.csv
 *.tif
+*.shp
 *.dta
 *.sav
 *.xlsx
 *.nc
-# ini
+*.pdf
+
+00_rawdata/shapefiles/gadm_admin2.shp
+00_rawdata/spei/spei12.nc

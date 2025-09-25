@@ -1,104 +1,103 @@
-#population grid GWP
+# population grid GWP
 # Set up and packages  ----------------------------------------------------
 setwd("C:/Users/eman7/Dropbox/GitHub/ra_work/Donor_fragmentation/")
 
-if (!require("pacman")) 
-  install.packages("pacman"); 
-
+if (!require("pacman")) {
+  install.packages("pacman")
+}
 pacman::p_load(
   tidyverse,
   here,
   readr,
-  janitor,
-  scales,
-  psych,
-  tidylog,
-  units,
-  DescTools,
-  zoo,
   data.table,
   ### GEO Packages
   sf,
-  geodata,
-  terra,
-  nngeo
+  terra
 )
-#### Admin 2 
 
-# Population grid GWP
+# Population grid WorldPop ----------------------------------------------
 # Load population data for each year
 # Define years of interest
-yrs <- c(2005, 2010, 2015)
+yrs <- c(2005:2015)
+
 
 # Load administrative boundaries once instead of multiple times
-shp_admin2 <- sf::st_as_sf(geodata::gadm(country = countries_iso3, level = 2, path = "00_rawdata/shapefiles/"))
-shp_admin1 <- sf::st_as_sf(geodata::gadm(country = countries_iso3, level = 1, path = "00_rawdata/shapefiles/"))
+# admin 2
+shp_admin2 <- read_sf("00_rawdata/shapefiles/gadm_admin2.shp") %>%
+  st_transform(4326)
 
-# Union of boundaries for cropping
+# admin 1
+shp_admin1 <- read_sf("00_rawdata/shapefiles/gadm_admin1.shp") %>%
+  st_transform(4326)
 
-# Initialize list to store results
-admin2_pop_list <- list()
-admin1_pop_list <- list()
+# List all population raster files
+pop_files <- list.files(here("00_rawdata", "population"), pattern = "\\.tif$", full.names = TRUE)
 
-for (yr in yrs) {
-  # Load population raster
-  pop <- geodata::population(yr, res = "10", path = tempdir())
-  
-  # Crop and mask to relevant area
-  admin_bounds <- sf::st_transform(shp_admin1, terra::crs(pop))
-  pop <- terra::crop(pop, sf::st_bbox(admin_bounds))
-  pop <- terra::mask(pop, admin_bounds)
-  
-  # Extract population for Admin2
-  avg_pop_admin2 <- terra::extract(pop, shp_admin2, fun = mean, na.rm = TRUE, exact = TRUE)
-  temp_admin2 <- data.frame(
-    GID_2 = shp_admin2$GID_2,
-    year = yr,
-    pop = avg_pop_admin2[, 2]  # Extract correct column
+# Extract years from filenames (assuming year is a 4-digit number)
+file_years <- as.numeric(gsub(".*?(\\d{4}).*", "\\1", pop_files))
+
+# Combine files and years into a data frame, then sort by year
+raster_data <- data.frame(file = pop_files, year = file_years)
+raster_data <- raster_data[order(raster_data$year), ]
+
+#-------------------------------------------------------------------------#
+# admin 1
+#-------------------------------------------------------------------------#
+ssa_admin1 <- read_sf("00_rawdata/shapefiles/gadm_admin1.shp") %>%
+  st_transform(4326)
+
+for (i in seq_along(raster_data$file)) {
+  raster_file <- raster_data$file[i]
+  year_label <- raster_data$year[i]
+
+  # Load the raster
+  pop_raster <- rast(raster_file)
+  # Crop the raster to the extent of ssa_admin1
+  pop_raster <- crop(pop_raster, vect(ssa_admin1))
+
+  # Compute zonal statistics
+  zonal_stats <- exactextractr::exact_extract(
+    pop_raster,
+    ssa_admin1,
+    "sum"
   )
-  admin2_pop_list[[as.character(yr)]] <- temp_admin2
-  
-  # Extract population for Admin1
-  avg_pop_admin1 <- terra::extract(pop, shp_admin1, fun = mean, na.rm = TRUE, exact = TRUE)
-  temp_admin1 <- data.frame(
-    GID_1 = shp_admin1$GID_1,
-    year = yr,
-    pop = avg_pop_admin1[, 2]  # Extract correct column
-  )
-  admin1_pop_list[[as.character(yr)]] <- temp_admin1
+
+  # Assign statistics to the shapefile columns
+  ssa_admin1[[paste0("sum_", year_label)]] <- zonal_stats
 }
 
-# Bind all results into final data frames
-admin2_pop <- bind_rows(admin2_pop_list)
-admin1_pop <- bind_rows(admin1_pop_list)
+# Admin1
+ssa_admin1 %>%
+  st_drop_geometry() %>%
+  write_csv(., here("00_rawdata", "population", "admin1_population.csv"))
 
-# Interpolate population for missing years
-# First interpolate population for missing years
-admin2_pop <- admin2_pop %>%
-  group_by(GID_2) %>%
-  complete(year = 2005:2015) %>%
-  mutate(
-    pop = na.approx(pop, x = year, na.rm = FALSE, rule = 2),
-    group_yr = case_when(
-      year %in% 2005:2008 ~ 1,
-      year %in% 2009:2011 ~ 2,
-      year %in% 2012:2015 ~ 3
-    )
-  ) 
 
-admin1_pop <- admin1_pop %>%
-  group_by(GID_1) %>%
-  complete(year = 2005:2015) %>%
-  mutate(
-    pop = na.approx(pop, x = year, na.rm = FALSE, rule = 2),
-    group_yr = case_when(
-      year %in% 2005:2008 ~ 1,
-      year %in% 2009:2011 ~ 2,
-      year %in% 2012:2015 ~ 3
-    )
+#-------------------------------------------------------------------------#
+# admin 2
+#-------------------------------------------------------------------------#
+ssa_admin2 <- read_sf("00_rawdata/shapefiles/gadm_admin2.shp") %>%
+  st_transform(4326)
+
+for (i in seq_along(raster_data$file)) {
+  raster_file <- raster_data$file[i]
+  year_label <- raster_data$year[i]
+
+  pop_raster <- rast(raster_file)
+  # Crop the raster to the extent of ssa_admin2
+  pop_raster <- crop(pop_raster, vect(ssa_admin2))
+
+  # Compute zonal statistics
+  zonal_stats <- exactextractr::exact_extract(
+    pop_raster,
+    ssa_admin2,
+    "sum"
   )
 
-# Admin1 
-write_csv(admin1_pop, here("00_rawdata", "population", "admin1_population.csv"))
+  # Assign statistics to the shapefile columns
+  ssa_admin2[[paste0("sum_", year_label)]] <- zonal_stats
+}
+
 # Admin2
-write_csv(admin2_pop, here("00_rawdata", "population", "admin2_population.csv"))
+ssa_admin2 %>%
+  st_drop_geometry() %>%
+  write_csv(., here("00_rawdata", "population", "admin2_population.csv"))
