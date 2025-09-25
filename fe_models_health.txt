@@ -1,0 +1,42 @@
+
+\begingroup
+\centering
+\begin{tabular}{lcccc}
+   \tabularnewline \midrule \midrule
+   Dependent Variable: & \multicolumn{4}{c}{u5m}\\
+   Model:                                                             & (1)                          & (2)                           & (3)                     & (4)\\  
+   \midrule
+   \emph{Variables}\\
+   lag\_donor\_count\_admin1                                          & $-9.54\times 10^{-5}$        & $-9.42\times 10^{-5}$         &                         &   \\   
+                                                                      & (0.0001)                     & (0.0001)                      &                         &   \\   
+   lag\_total\_proj\_admin1                                           & $-2.23\times 10^{-5}$        & $-6.02\times 10^{-5}$$^{**}$  &                         &   \\   
+                                                                      & ($4.25\times 10^{-5}$)       & ($2.43\times 10^{-5}$)        &                         &   \\   
+   lag\_total\_aid\_admin1                                            & $3.07\times 10^{-5}$$^{**}$  & $-4.93\times 10^{-5}$         &                         &   \\   
+                                                                      & ($1.49\times 10^{-5}$)       & ($3.82\times 10^{-5}$)        &                         &   \\   
+   lag\_donor\_count\_admin1 $\times$ lag\_total\_proj\_admin1        & $2.28\times 10^{-6}$         & $9.02\times 10^{-6}$$^{***}$  &                         &   \\   
+                                                                      & ($4.24\times 10^{-6}$)       & ($2.26\times 10^{-6}$)        &                         &   \\   
+   lag\_donor\_count\_admin2                                          &                              &                               & $-1.14\times 10^{-5}$   & $-3.78\times 10^{-5}$\\    
+                                                                      &                              &                               & ($7.89\times 10^{-5}$)  & ($7.12\times 10^{-5}$)\\    
+   lag\_total\_proj\_admin2                                           &                              &                               & $6.5\times 10^{-5}$     & $-2.21\times 10^{-5}$$^{***}$\\    
+                                                                      &                              &                               & ($7.28\times 10^{-5}$)  & ($6.15\times 10^{-6}$)\\    
+   lag\_total\_aid\_admin2                                            &                              &                               & $1.75\times 10^{-5}$    & $-9.24\times 10^{-6}$\\    
+                                                                      &                              &                               & ($1.63\times 10^{-5}$)  & ($7.41\times 10^{-6}$)\\    
+   lag\_donor\_count\_admin2 $\times$ lag\_total\_proj\_admin2        &                              &                               & $-6.74\times 10^{-6}$   & $1.21\times 10^{-5}$$^{***}$\\    
+                                                                      &                              &                               & ($9.01\times 10^{-6}$)  & ($2.81\times 10^{-6}$)\\    
+   \midrule
+   \emph{Fixed-effects}\\
+   GID\_0-year                                                        & Yes                          & Yes                           & Yes                     & Yes\\  
+   GID\_1                                                             & Yes                          & Yes                           &                         & \\  
+   GID\_2                                                             &                              &                               & Yes                     & Yes\\  
+   \midrule
+   \emph{Fit statistics}\\
+   Observations                                                       & 1,058                        & 3,175                         & 5,172                   & 15,528\\  
+   R$^2$                                                              & 0.99734                      & 0.99320                       & 0.99449                 & 0.99242\\  
+   Within R$^2$                                                       & 0.00217                      & 0.01793                       & 0.00137                 & 0.00382\\  
+   \midrule \midrule
+   \multicolumn{5}{l}{\emph{Clustered (GID\_0-year) standard-errors in parentheses}}\\
+   \multicolumn{5}{l}{\emph{Signif. Codes: ***: 0.01, **: 0.05, *: 0.1}}\\
+\end{tabular}
+\par\endgroup
+
+

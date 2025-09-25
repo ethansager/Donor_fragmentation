@@ -1,0 +1,46 @@
+
+\begingroup
+\centering
+\begin{tabular}{lcccc}
+   \tabularnewline \midrule \midrule
+   Dependent Variable: & \multicolumn{4}{c}{nl\_growth}\\
+   Model:                                                             & (1)          & (2)          & (3)      & (4)\\  
+   \midrule
+   \emph{Variables}\\
+   lag\_donor\_count\_admin1                                          & -0.1345      & -2.003       &          &   \\   
+                                                                      & (0.5916)     & (1.697)      &          &   \\   
+   lag\_total\_proj\_admin1                                           & 0.1438       & -0.2738      &          &   \\   
+                                                                      & (0.1186)     & (0.1854)     &          &   \\   
+   lag\_total\_aid\_admin1                                            & 0.1471       & 2.301        &          &   \\   
+                                                                      & (0.5298)     & (2.059)      &          &   \\   
+   lag\_pop\_admin1                                                   & 45.87$^{**}$ & 6.068        &          &   \\   
+                                                                      & (20.99)      & (18.21)      &          &   \\   
+   lag\_donor\_count\_admin1 $\times$ lag\_total\_proj\_admin1        & -0.0149      & 0.0299$^{*}$ &          &   \\   
+                                                                      & (0.0127)     & (0.0154)     &          &   \\   
+   lag\_donor\_count\_admin2                                          &              &              & 0.6124   & -0.0367\\   
+                                                                      &              &              & (0.6649) & (0.6713)\\   
+   lag\_total\_proj\_admin2                                           &              &              & 0.2303   & -0.0084\\   
+                                                                      &              &              & (0.3935) & (0.0140)\\   
+   lag\_total\_aid\_admin2                                            &              &              & 0.0142   & -0.2246\\   
+                                                                      &              &              & (0.1655) & (0.2205)\\   
+   lag\_pop\_admin2                                                   &              &              & 15.11    & -14.04\\   
+                                                                      &              &              & (17.03)  & (14.69)\\   
+   lag\_donor\_count\_admin2 $\times$ lag\_total\_proj\_admin2        &              &              & -0.0248  & 0.0067\\   
+                                                                      &              &              & (0.0489) & (0.0070)\\   
+   \midrule
+   \emph{Fixed-effects}\\
+   GID\_0-year                                                        & Yes          & Yes          & Yes      & Yes\\  
+   GID\_1                                                             & Yes          & Yes          &          & \\  
+   GID\_2                                                             &              &              & Yes      & Yes\\  
+   \midrule
+   \emph{Fit statistics}\\
+   Observations                                                       & 580          & 1,741        & 1,613    & 4,840\\  
+   R$^2$                                                              & 0.41529      & 0.26266      & 0.41263  & 0.28030\\  
+   Within R$^2$                                                       & 0.01599      & 0.00835      & 0.00169  & 0.00030\\  
+   \midrule \midrule
+   \multicolumn{5}{l}{\emph{Clustered (GID\_0-year) standard-errors in parentheses}}\\
+   \multicolumn{5}{l}{\emph{Signif. Codes: ***: 0.01, **: 0.05, *: 0.1}}\\
+\end{tabular}
+\par\endgroup
+
+
