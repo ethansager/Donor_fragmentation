@@ -123,7 +123,13 @@ extract_multiband_stats <- function(raster_path, shapefile, years, start_year, s
   raster_obj <- terra::rast(raster_path)
   
   # Validate band indices
-  max_band <- max(years - start_year + 1)
+  band_indices <- years - start_year + 1
+  min_band <- min(band_indices)
+  max_band <- max(band_indices)
+  
+  if (min_band < 1) {
+    stop(sprintf("All years must be >= start_year (%d). Minimum year provided: %d", start_year, min(years)))
+  }
   if (max_band > terra::nlyr(raster_obj)) {
     stop(sprintf("Requested band index %d exceeds available bands (%d)", max_band, terra::nlyr(raster_obj)))
   }
@@ -157,21 +163,7 @@ extract_multiband_stats <- function(raster_path, shapefile, years, start_year, s
 build_panel_data <- function(data, id_cols, year_range, value_prefixes, admin_suffix = NULL) {
   require(tidyverse)
   
-  # Create column selection pattern
-  year_cols <- paste0(
-    rep(value_prefixes, each = length(year_range)),
-    "_",
-    rep(year_range, times = length(value_prefixes))
-  )
-  
-  # Create output variable names
-  if (!is.null(admin_suffix)) {
-    output_vars <- paste0(value_prefixes, "_", admin_suffix)
-  } else {
-    output_vars <- value_prefixes
-  }
-  
-  # Extract regex pattern to avoid duplication
+  # Extract regex patterns to avoid duplication
   col_pattern <- paste0("^(", paste(value_prefixes, collapse = "|"), ")_\\d{4}$")
   name_pattern <- paste0("(", paste(value_prefixes, collapse = "|"), ")_(\\d+)")
   
