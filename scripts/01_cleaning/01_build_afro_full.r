@@ -86,75 +86,19 @@ afro_merged <- afro_merged %>%
   )
 
 
+# Load utility function for recoding
+source(here("scripts", "utils", "afro_processing_utils.r"))
+
 afro_merged <- afro_merged %>%
   tidylog::mutate(
-    # self report
     # corruption should be reverse coded
-    corruption_rec = case_match(
-      corruption_local_government_councilors,
-      0 ~ 4,
-      1 ~ 3,
-      2 ~ 2,
-      3 ~ 1,
-      # Everything else is NA
-      .default = NA_real_
-    ),
-    trust_rec = case_match(
-      trust_your_elected_local_government_council,
-      0 ~ 1,
-      1 ~ 2,
-      2 ~ 3,
-      3 ~ 4,
-      # Everything else is NA
-      .default = NA_real_
-    ),
-    contact_rec = case_match(
-      contact_local_government_councilor,
-      0 ~ 1,
-      1 ~ 2,
-      2 ~ 3,
-      3 ~ 4,
-      # Everything else is NA
-      .default = NA_real_
-    ),
-    # maintian 4 point scales
-    maintian_road_rec = case_match(
-      local_govt_handling_maintaining_roads,
-      0 ~ 1,
-      1 ~ 2,
-      2 ~ 3,
-      3 ~ 4,
-      # Everything else is NA
-      .default = NA_real_
-    ),
-    maintian_market_rec = case_match(
-      local_govt_handling_maintaining_local_markets,
-      0 ~ 1,
-      1 ~ 2,
-      2 ~ 3,
-      3 ~ 4,
-      # Everything else is NA
-      .default = NA_real_
-    ),
-    # preformance and listen
-    preformance_rec = case_match(
-      performance_local_government_councilor,
-      0 ~ 1,
-      1 ~ 2,
-      2 ~ 3,
-      3 ~ 4,
-      # Everything else is NA
-      .default = NA_real_
-    ),
-    listen_rec = case_match(
-      local_government_councilors_listen,
-      0 ~ 1,
-      1 ~ 2,
-      2 ~ 3,
-      3 ~ 4,
-      # Everything else is NA
-      .default = NA_real_
-    )
+    corruption_rec = recode_four_point(corruption_local_government_councilors, reverse = TRUE),
+    trust_rec = recode_four_point(trust_your_elected_local_government_council),
+    contact_rec = recode_four_point(contact_local_government_councilor),
+    maintian_road_rec = recode_four_point(local_govt_handling_maintaining_roads),
+    maintian_market_rec = recode_four_point(local_govt_handling_maintaining_local_markets),
+    preformance_rec = recode_four_point(performance_local_government_councilor),
+    listen_rec = recode_four_point(local_government_councilors_listen)
   )
 
 # Descriptive
@@ -440,135 +384,25 @@ write_csv(afro_fin, paste0(here("00_rawdata", "ab_raw", "processed"), "/afrobaro
 
 ###### create panel to match ########
 
-admin1_afro <- afro_merged %>%
-  group_by(GID_1, wave) %>%
-  filter(!is.na(GID_1) & !is.na(wave)) %>%
-  sf::st_drop_geometry() %>%
-  mutate(
-    afro_count = n(),
-    mean_sgq_admin1 = mean(sgqi, na.rm = TRUE),
-    mean_svc_admin1 = mean(ea_svc_index, na.rm = TRUE),
-    mean_fac_admin1 = mean(ea_fac_index, na.rm = TRUE)
-  ) %>%
-  select(
-    afro_count,
-    year,
-    wave,
-    GID_0,
-    GID_1,
-    starts_with("mean")
-  ) %>%
-  mutate(
-    mean_svc_admin1 = if_else(wave == 3, NA, mean_svc_admin1),
-    mean_fac_admin1 = if_else(wave == 3, NA, mean_fac_admin1),
-  ) %>%
-  distinct()
+# Load utility functions
+source(here("scripts", "utils", "afro_processing_utils.r"))
 
-admin1_afro <- admin1_afro %>%
-  mutate(year = as.numeric(year))
-
-# Create a complete panel of years for each GID_1.
-admin1_afro <- admin1_afro %>%
-  group_by(GID_1) %>%
-  complete(year = 2005:2015) %>% # Ensure the year range is explicitly set to 2005-2015
-  arrange(GID_1, year) %>%
-  fill(wave, GID_0, afro_count, .direction = "down") %>%
-  mutate(group_yr = case_when(
-    year %in% 2005:2008 ~ 1,
-    year %in% 2009:2011 ~ 2,
-    year %in% 2012:2015 ~ 3,
-  ))
-
-# Interpolate the mean values across the complete sequence of years.
-admin1_afro <- admin1_afro %>%
-  group_by(GID_1) %>%
-  mutate(
-    mean_sgq_admin1 = na.approx(mean_sgq_admin1, x = year, na.rm = FALSE, rule = 2),
-    mean_svc_admin1 = na.approx(mean_svc_admin1, x = year, na.rm = FALSE, rule = 2),
-    mean_fac_admin1 = na.approx(mean_fac_admin1, x = year, na.rm = FALSE, rule = 2),
-    # Then fill remaining NAs with the single available value
-    mean_sgq_admin1 = ifelse(is.na(mean_sgq_admin1),
-      first(mean_sgq_admin1[!is.na(mean_sgq_admin1)]),
-      mean_sgq_admin1
-    ),
-    mean_svc_admin1 = ifelse(is.na(mean_svc_admin1),
-      first(mean_svc_admin1[!is.na(mean_svc_admin1)]),
-      mean_svc_admin1
-    ),
-    mean_fac_admin1 = ifelse(is.na(mean_fac_admin1),
-      first(mean_fac_admin1[!is.na(mean_fac_admin1)]),
-      mean_fac_admin1
-    )
-  ) %>%
-  ungroup()
+# Process admin1 panel using utility function
+admin1_afro <- process_afro_panel(
+  afro_data = afro_merged,
+  admin_level = "admin1",
+  year_range = c(2005, 2015)
+)
 
 summary(admin1_afro$mean_sgq_admin1, na.rm = TRUE)
 
-
 ### admin 2
-admin2_afro <- afro_merged %>%
-  group_by(GID_2, wave) %>%
-  filter(!is.na(GID_2) & !is.na(wave)) %>%
-  sf::st_drop_geometry() %>%
-  mutate(
-    afro_count = n(),
-    mean_sgq_admin2 = mean(sgqi, na.rm = TRUE),
-    mean_svc_admin2 = mean(ea_svc_index, na.rm = TRUE),
-    mean_fac_admin2 = mean(ea_fac_index, na.rm = TRUE)
-  ) %>%
-  select(
-    afro_count,
-    year,
-    wave,
-    GID_0,
-    GID_1,
-    GID_2,
-    starts_with("mean")
-  ) %>%
-  mutate(
-    mean_svc_admin2 = if_else(wave == 3, NA, mean_svc_admin2),
-    mean_fac_admin2 = if_else(wave == 3, NA, mean_fac_admin2),
-  ) %>%
-  distinct()
-
-admin2_afro <- admin2_afro %>%
-  mutate(year = as.numeric(year))
-
-# Create a complete panel of years for each GID_2.
-admin2_afro <- admin2_afro %>%
-  group_by(GID_2) %>%
-  complete(year = 2005:2015) %>% # Ensure the year range is explicitly set to 2005-2015
-  arrange(GID_2, year) %>%
-  fill(wave, GID_0, GID_1, afro_count, .direction = "down") %>%
-  mutate(group_yr = case_when(
-    year %in% 2005:2008 ~ 1,
-    year %in% 2009:2011 ~ 2,
-    year %in% 2012:2015 ~ 3,
-  ))
-
-# Interpolate the mean values across the complete sequence of years.
-admin2_afro <- admin2_afro %>%
-  group_by(GID_2) %>%
-  mutate(
-    mean_sgq_admin2 = na.approx(mean_sgq_admin2, x = year, na.rm = FALSE, rule = 2),
-    mean_svc_admin2 = na.approx(mean_svc_admin2, x = year, na.rm = FALSE, rule = 2),
-    mean_fac_admin2 = na.approx(mean_fac_admin2, x = year, na.rm = FALSE, rule = 2),
-    # For each GID_2, that only has one observation, fill the mean values with the single available value
-    mean_sgq_admin2 = ifelse(is.na(mean_sgq_admin2),
-      first(mean_sgq_admin2[!is.na(mean_sgq_admin2)]),
-      mean_sgq_admin2
-    ),
-    mean_svc_admin2 = ifelse(is.na(mean_svc_admin2),
-      first(mean_svc_admin2[!is.na(mean_svc_admin2)]),
-      mean_svc_admin2
-    ),
-    mean_fac_admin2 = ifelse(is.na(mean_fac_admin2),
-      first(mean_fac_admin2[!is.na(mean_fac_admin2)]),
-      mean_fac_admin2
-    )
-  ) %>%
-  ungroup()
-
+# Process admin2 panel using utility function
+admin2_afro <- process_afro_panel(
+  afro_data = afro_merged,
+  admin_level = "admin2",
+  year_range = c(2005, 2015)
+)
 
 summary(admin1_afro$mean_sgq_admin1, na.rm = TRUE)
 summary(admin2_afro$mean_sgq_admin2, na.rm = TRUE)
