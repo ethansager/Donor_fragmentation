@@ -101,82 +101,42 @@ stargazer(random_models_admin2_late, type = "latex", out = "random_models_admin2
 # New Regrression Analysis
 ##############################################################################################
 
-# split data into high and low capacity groups
-panel_aid_admin1 <- panel_aid_admin1 %>%
-  mutate(
-    threshold = mean(mean_sgq_admin1, na.rm = TRUE),
-    high_capacity = ifelse(mean_sgq_admin1 > threshold, 1, 0))%>%  
-    arrange(GID_1, paymentyear) %>%  # Sort before grouping
-  group_by(GID_1) %>%
-  mutate(
-    lag_mean_nl = dplyr::lag(mean_nl),
-    # Only first observation per group will be NA
-    nl_growth = as.numeric(case_when(
-      is.na(lag_mean_nl) ~ NA_real_,
-      lag_mean_nl == 0 & mean_nl == 0 ~ log(mean_nl + 0.01),  # No growth when both are zero
-      lag_mean_nl == 0 ~ log(mean_nl + 0.01),  # Handle zero in previous period
-      TRUE ~ log((mean_nl + 0.01) / (lag_mean_nl + 0.01)))  # Regular case with small constant
-    )
-  )
+# Load utility functions
+source(here("scripts", "utils", "regression_utils.r"))
 
-
-panel_aid_admin2 <- panel_aid_admin2 %>%
-  mutate(
-    threshold = mean(mean_sgq_admin2, na.rm = TRUE),
-    high_capacity = ifelse(mean_sgq_admin2 > threshold, 1, 0))%>%  
-    arrange(GID_2, paymentyear) %>%  # Sort before grouping
-  group_by(GID_2) %>%
-  mutate(
-    lag_mean_nl = dplyr::lag(mean_nl),
-    # Only first observation per group will be NA
-    nl_growth = as.numeric(case_when(
-      is.na(lag_mean_nl) ~ NA_real_,
-      lag_mean_nl == 0 & mean_nl == 0 ~ log(mean_nl + 0.01),  # No growth when both are zero
-      lag_mean_nl == 0 ~ log(mean_nl + 0.01),  # Handle zero in previous period
-      TRUE ~ log((mean_nl + 0.01) / (lag_mean_nl + 0.01)))  # Regular case with small constant
-    )
-  )
-
-# Now we want to regress the lagged nl growth on aid variable X fragmentation, separately for high and low capacity groups
-admin1_high <- panel_aid_admin1 %>% filter(high_capacity == 1)
-admin1_low  <- panel_aid_admin1 %>% filter(high_capacity == 0)
-
-admin2_high <- panel_aid_admin2 %>% filter(high_capacity == 1)
-admin2_low  <- panel_aid_admin2 %>% filter(high_capacity == 0)
-
-# Run panel regressions for Admin1 groups
-model_admin1_high <- plm(
-  log(lag(mean_nl,1)+.01) ~ log(total_aid_admin1) * donor_count_admin1,
-  data = admin1_high,
-  index = c("GID_1", "paymentyear"),
-  effect = "twoways",
-  model = "within"
+# Split data into high and low capacity groups and add growth variable
+panel_aid_admin1 <- add_capacity_and_growth(
+  data = panel_aid_admin1,
+  admin_id = "GID_1",
+  capacity_var = "mean_sgq_admin1"
 )
 
-model_admin1_low <- plm(
-  log(lag(mean_nl,1)+.01) ~ log(total_aid_admin1) * donor_count_admin1,
-  data = admin1_low,
-  index = c("GID_1", "paymentyear"),
-   effect = "twoways",
-  model = "within"
+panel_aid_admin2 <- add_capacity_and_growth(
+  data = panel_aid_admin2,
+  admin_id = "GID_2",
+  capacity_var = "mean_sgq_admin2"
 )
 
-# Run panel regressions for Admin2 groups
-model_admin2_high <- plm(
-  log(lag(mean_nl,1)+.01) ~ log(total_aid_admin2) * donor_count_admin2,
-  data = admin2_high,
-  index = c("GID_2", "paymentyear"),
-   effect = "twoways",
-  model = "within"
+# Run panel regressions for both admin levels
+admin1_models <- run_capacity_regressions(
+  data = panel_aid_admin1,
+  admin_id = "GID_1",
+  aid_var = "total_aid_admin1",
+  frag_var = "donor_count_admin1"
 )
 
-model_admin2_low <- plm(
-  log(lag(mean_nl,1)+.01) ~ log(total_aid_admin2) * donor_count_admin2,
-  data = admin2_low,
-  index = c("GID_2", "paymentyear"),
-   effect = "twoways",
-  model = "within"
+admin2_models <- run_capacity_regressions(
+  data = panel_aid_admin2,
+  admin_id = "GID_2",
+  aid_var = "total_aid_admin2",
+  frag_var = "donor_count_admin2"
 )
+
+# Extract individual models for compatibility
+model_admin1_high <- admin1_models$high
+model_admin1_low <- admin1_models$low
+model_admin2_high <- admin2_models$high
+model_admin2_low <- admin2_models$low
 
 model_list <- list(
   "Admin1 High" = model_admin1_high,

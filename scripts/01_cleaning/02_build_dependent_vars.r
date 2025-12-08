@@ -18,167 +18,79 @@ pacman::p_load(
   spatstat,
   geodata,
   terra,
-  exactextractr
+  exactextractr,
+  zoo
 )
 
+# Load utility functions
+source(here("scripts", "utils", "spatial_processing_utils.r"))
 
-# admin 1
-ssa_admin1 <- read_sf("00_rawdata/shapefiles/gadm_admin1.shp") %>%
-  st_transform(4326)
+# Process nightlight data for both admin levels
+admin_results <- process_admin_levels(
+  admin1_shp_path = "00_rawdata/shapefiles/gadm_admin1.shp",
+  admin2_shp_path = "00_rawdata/shapefiles/gadm_admin2.shp",
+  raster_dir = "00_rawdata/nightlights/africa",
+  stats = c("sum", "mean"),
+  crop_to_extent = FALSE
+)
 
-raster_files <- list.files(here("00_rawdata", "nightlights", "africa"), pattern = "\\.tif$", full.names = TRUE)
+ssa_admin1 <- admin_results$admin1
+ssa_admin2 <- admin_results$admin2
 
-# Extract years from filenames (assuming year is a 4-digit number)
-file_years <- as.numeric(gsub(".*?(\\d{4}).*", "\\1", raster_files))
-
-# Combine files and years into a data frame, then sort by year
-raster_data <- data.frame(file = raster_files, year = file_years)
-raster_data <- raster_data[order(raster_data$year), ]
-
-
-for (i in seq_along(raster_data$file)) {
-  raster_file <- raster_data$file[i]
-  year_label <- raster_data$year[i]
-
-  # Load the raster
-  nightlight_raster <- rast(raster_file)
-
-  # Compute zonal statistics
-  zonal_stats <- exactextractr::exact_extract(
-    nightlight_raster,
-    ssa_admin1,
-    "sum"
-  )
-
-  # Assign statistics to the shapefile columns
-  ssa_admin1[[paste0("sum_", year_label)]] <- zonal_stats
-
-  # Compute zonal statistics
-  zonal_stats2 <- exactextractr::exact_extract(
-    nightlight_raster,
-    ssa_admin1,
-    "mean"
-  )
-
-  # Assign statistics to the shapefile columns
-  ssa_admin1[[paste0("mean_", year_label)]] <- zonal_stats2
-}
-
+# Save processed nightlight data
 ssa_admin1 %>%
   st_drop_geometry() %>%
   write_csv(., here("00_rawdata", "nightlights", "topcodefix", "processed_topcodefix_nl_admin1.csv"))
-
-# admin 2
-ssa_admin2 <- read_sf("00_rawdata/shapefiles/gadm_admin2.shp") %>%
-  st_transform(4326)
-
-for (i in seq_along(raster_data$file)) {
-  raster_file <- raster_data$file[i]
-  year_label <- raster_data$year[i]
-
-  # Load the raster
-  nightlight_raster <- rast(raster_file)
-
-  # Compute zonal statistics
-  zonal_stats <- exactextractr::exact_extract(
-    nightlight_raster,
-    ssa_admin2,
-    "sum"
-  )
-
-  # Assign statistics to the shapefile columns
-  ssa_admin2[[paste0("sum_", year_label)]] <- zonal_stats
-
-  # Compute zonal statistics
-  zonal_stats2 <- exactextractr::exact_extract(
-    nightlight_raster,
-    ssa_admin2,
-    "mean"
-  )
-
-  # Assign statistics to the shapefile columns
-  ssa_admin2[[paste0("mean_", year_label)]] <- zonal_stats2
-}
 
 ssa_admin2 %>%
   st_drop_geometry() %>%
   write_csv(., here("00_rawdata", "nightlights", "topcodefix", "processed_topcodefix_nl_admin2.csv"))
 
 ### Now we estimate average under 5 mortality rates for each admin level
+years <- 2005:2015
 
-u5m_raster <- terra::rast("00_rawdata/under_5/IHME_LMICS_U5M_2000_2017_Q_UNDER5_MEAN_Y2019M10D16.TIF")
+# Extract U5M data for admin1
+ssa_admin1 <- extract_multiband_stats(
+  raster_path = "00_rawdata/under_5/IHME_LMICS_U5M_2000_2017_Q_UNDER5_MEAN_Y2019M10D16.TIF",
+  shapefile = ssa_admin1,
+  years = years,
+  start_year = 2000,
+  stat = "mean",
+  var_prefix = "u5m"
+)
 
-years <- 2000:2015
-u5m_values <- list()
-
-for (year in years) {
-  # Extract values for the specific year
-  u5m_values[[paste0("u5m_", year)]] <- exactextractr::exact_extract(u5m_raster[[year - 2000 + 1]], ssa_admin1, "mean")
-}
-
-u5m_df <- as.data.frame(u5m_values)
-# Bind GDP values to the main dataframe
-ssa_admin1 <- cbind(ssa_admin1, u5m_df)
-
-### Admin 2
-u5m_values <- list()
-
-for (year in years) {
-  # Extract values for the specific year
-  u5m_values[[paste0("u5m_", year)]] <- exactextractr::exact_extract(u5m_raster[[year - 2000 + 1]], ssa_admin2, "mean")
-}
-
-u5m_df <- as.data.frame(u5m_values)
-# Bind u5m values to the main dataframe
-ssa_admin2 <- cbind(ssa_admin2, u5m_df)
+# Extract U5M data for admin2
+ssa_admin2 <- extract_multiband_stats(
+  raster_path = "00_rawdata/under_5/IHME_LMICS_U5M_2000_2017_Q_UNDER5_MEAN_Y2019M10D16.TIF",
+  shapefile = ssa_admin2,
+  years = years,
+  start_year = 2000,
+  stat = "mean",
+  var_prefix = "u5m"
+)
 
 ## Build the final admin 1 panel data
-ssa_admin1 <- ssa_admin1 %>%
-  select(
-    GID_0, GID_1,
-    mean_2005:mean_2015,
-    u5m_2005:u5m_2015,
-    sum_2005:sum_2015
-  ) %>%
-  pivot_longer(
-    c(
-      mean_2005:mean_2015,
-      u5m_2005:u5m_2015,
-      sum_2005:sum_2015
-    ),
-    names_to = c(".value", "year"),
-    names_pattern = "(mean|u5m|sum)_(\\d+)",
-    values_to = c("mean_nl", "u5m_admin1", "sum_admin1")
-  ) %>%
-  mutate(year = as.numeric(year)) %>%
-  filter(!is.na(year))
+ssa_admin1_panel <- build_panel_data(
+  data = ssa_admin1,
+  id_cols = c("GID_0", "GID_1"),
+  year_range = years,
+  value_prefixes = c("mean", "u5m", "sum"),
+  admin_suffix = "admin1"
+)
 
-ssa_admin1 %>%
+ssa_admin1_panel %>%
   st_drop_geometry() %>%
   write_csv(., here("00_rawdata", "processed_dep_vars_admin1.csv"))
 
-## Build the final admin 1 panel data
-ssa_admin2 <- ssa_admin2 %>%
-  st_drop_geometry() %>%
-  select(
-    GID_0, GID_1, GID_2,
-    mean_2005:mean_2015,
-    u5m_2005:u5m_2015,
-    sum_2005:sum_2015
-  ) %>%
-  pivot_longer(
-    c(
-      mean_2005:mean_2015,
-      u5m_2005:u5m_2015,
-      sum_2005:sum_2015
-    ),
-    names_to = c(".value", "year"),
-    names_pattern = "(mean|u5m|sum)_(\\d+)",
-    values_to = c("mean_nl", "u5m_admin2", "sum_admin2")
-  ) %>%
-  mutate(year = as.numeric(year)) %>%
-  filter(!is.na(year))
+## Build the final admin 2 panel data
+ssa_admin2_panel <- build_panel_data(
+  data = ssa_admin2,
+  id_cols = c("GID_0", "GID_1", "GID_2"),
+  year_range = years,
+  value_prefixes = c("mean", "u5m", "sum"),
+  admin_suffix = "admin2"
+)
 
-ssa_admin2 %>%
+ssa_admin2_panel %>%
   st_drop_geometry() %>%
   write_csv(., here("00_rawdata", "processed_dep_vars_admin2.csv"))
