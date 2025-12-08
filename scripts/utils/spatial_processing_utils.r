@@ -111,11 +111,22 @@ process_admin_levels <- function(admin1_shp_path, admin2_shp_path, raster_dir,
 #' @param var_prefix Prefix for output column names (e.g., "u5m")
 #' @return sf object with added columns for each year
 extract_multiband_stats <- function(raster_path, shapefile, years, start_year, stat = "mean", var_prefix = "var") {
-  require(terra)
-  require(exactextractr)
+  # Validate inputs
+  if (!is.numeric(years) || length(years) == 0) {
+    stop("years must be a non-empty numeric vector")
+  }
+  if (!is.numeric(start_year) || length(start_year) != 1) {
+    stop("start_year must be a single numeric value")
+  }
   
   # Load the multi-band raster
   raster_obj <- terra::rast(raster_path)
+  
+  # Validate band indices
+  max_band <- max(years - start_year + 1)
+  if (max_band > terra::nlyr(raster_obj)) {
+    stop(sprintf("Requested band index %d exceeds available bands (%d)", max_band, terra::nlyr(raster_obj)))
+  }
   
   # Extract values for each year
   values_list <- list()
@@ -166,8 +177,7 @@ build_panel_data <- function(data, id_cols, year_range, value_prefixes, admin_su
     pivot_longer(
       cols = matches(paste0("^(", paste(value_prefixes, collapse = "|"), ")_\\d{4}$")),
       names_to = c(".value", "year"),
-      names_pattern = paste0("(", paste(value_prefixes, collapse = "|"), ")_(\\d+)"),
-      values_to = output_vars
+      names_pattern = paste0("(", paste(value_prefixes, collapse = "|"), ")_(\\d+)")
     ) %>%
     mutate(year = as.numeric(year)) %>%
     filter(!is.na(year))

@@ -35,7 +35,12 @@ recode_four_point <- function(x, reverse = FALSE) {
 #' @param year_range Numeric vector with start and end years (e.g., c(2005, 2015))
 #' @return Data frame with complete panel
 create_admin_panel <- function(data, admin_id, year_range = c(2005, 2015)) {
-  require(tidyverse)
+  # Validate required columns
+  required_cols <- c("wave", "GID_0", "afro_count")
+  missing_cols <- setdiff(required_cols, names(data))
+  if (length(missing_cols) > 0) {
+    stop(sprintf("Missing required columns: %s", paste(missing_cols, collapse = ", ")))
+  }
   
   data %>%
     group_by(.data[[admin_id]]) %>%
