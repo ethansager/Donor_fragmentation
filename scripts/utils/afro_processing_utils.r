@@ -48,6 +48,7 @@ create_admin_panel <- function(data, admin_id, year_range = c(2005, 2015)) {
     arrange(.data[[admin_id]], year) %>%
     fill(wave, GID_0, afro_count, .direction = "down") %>%
     mutate(group_yr = case_when(
+      # Group years into survey waves: Wave 3 (2005-2008), Wave 4 (2009-2011), Wave 5 (2012-2015)
       year %in% 2005:2008 ~ 1,
       year %in% 2009:2011 ~ 2,
       year %in% 2012:2015 ~ 3,

@@ -171,13 +171,17 @@ build_panel_data <- function(data, id_cols, year_range, value_prefixes, admin_su
     output_vars <- value_prefixes
   }
   
+  # Extract regex pattern to avoid duplication
+  col_pattern <- paste0("^(", paste(value_prefixes, collapse = "|"), ")_\\d{4}$")
+  name_pattern <- paste0("(", paste(value_prefixes, collapse = "|"), ")_(\\d+)")
+  
   # Select and pivot
   result <- data %>%
-    select(all_of(id_cols), matches(paste0("^(", paste(value_prefixes, collapse = "|"), ")_\\d{4}$"))) %>%
+    select(all_of(id_cols), matches(col_pattern)) %>%
     pivot_longer(
-      cols = matches(paste0("^(", paste(value_prefixes, collapse = "|"), ")_\\d{4}$")),
+      cols = matches(col_pattern),
       names_to = c(".value", "year"),
-      names_pattern = paste0("(", paste(value_prefixes, collapse = "|"), ")_(\\d+)")
+      names_pattern = name_pattern
     ) %>%
     mutate(year = as.numeric(year)) %>%
     filter(!is.na(year))
