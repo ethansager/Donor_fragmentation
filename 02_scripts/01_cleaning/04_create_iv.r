@@ -194,7 +194,7 @@ construct_shift_share_iv_strict <- function(
 }
 
 # Create the IV admin2
-panel_aid_admin2 <- read_csv("01_panel_data/panel_aid_admin2.csv")
+panel_aid_admin2 <- read_csv(here("01_panel_data", "panel_aid_admin2.csv"))
 
 results <- construct_shift_share_iv_strict(
     aid_data = aid_data,
@@ -209,7 +209,7 @@ panel_aid_admin2 <- panel_aid_admin2 %>%
 
 # Create the IV admin1
 
-panel_aid_admin1 <- read_csv("01_panel_data/panel_aid_admin1.csv")
+panel_aid_admin1 <- read_csv(here("01_panel_data", "panel_aid_admin1.csv"))
 
 results <- construct_shift_share_iv_strict(
     aid_data = aid_data,
@@ -224,5 +224,5 @@ panel_aid_admin1 <- panel_aid_admin1 %>%
 
 # Save the data
 
-write_csv(panel_aid_admin2, "01_panel_data/panel_aid_admin2_fin.csv")
-write_csv(panel_aid_admin1, "01_panel_data/panel_aid_admin1_fin.csv")
+write_csv(panel_aid_admin2, here("01_panel_data", "panel_aid_admin2_fin.csv"))
+write_csv(panel_aid_admin1, here("01_panel_data", "panel_aid_admin1_fin.csv"))

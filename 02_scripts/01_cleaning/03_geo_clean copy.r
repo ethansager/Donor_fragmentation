@@ -1,6 +1,5 @@
 # Cleaning datasets script
 # Set up and packages  ----------------------------------------------------
-setwd("C:/Users/eman7/Dropbox/GitHub/ra_work/Donor_fragmentation/")
 
 if (!require("pacman")) {
   install.packages("pacman")
@@ -72,8 +71,7 @@ dat <- dat %>%
       !is.na(latitude) &
       !is.na(longitude) &
       world_bank == 0 &
-      !is.na(sector_name) &
-      grepl("health", sector_name, ignore.case = TRUE)
+      sector_codes %in% c(120, 121, 122, 123, 130, 140)
   )
 
 summary(dat)
@@ -269,7 +267,7 @@ admin1_afro <- read_csv("00_rawdata/ab_raw/processed/admin1_afro_panel.csv") %>%
   select(year, GID_0, GID_1, starts_with("mean_"), afro_count, wave)
 
 admin2_afro <- read_csv("00_rawdata/ab_raw/processed/admin2_afro_panel.csv") %>%
-  select(year, GID_0, GID_1, GID_2, starts_with("mean_"), afro_count, wave)
+  select(year, GID_0, GID_2, starts_with("mean_"), afro_count, wave)
 
 # Merge the Afro data into the panel data
 panel_aid_admin1 <- panel_aid_admin1 %>%
@@ -282,7 +280,7 @@ panel_aid_admin1 <- panel_aid_admin1 %>%
 panel_aid_admin2 <- panel_aid_admin2 %>%
   dplyr::inner_join(
     admin2_afro,
-    by = c("paymentyear" = "year", "GID_0", "GID_1", "GID_2")
+    by = c("paymentyear" = "year", "GID_0", "GID_2")
   ) %>%
   rename(year = paymentyear)
 
@@ -385,10 +383,3 @@ panel_aid_admin2_fin <- panel_aid_admin2 %>%
 ### SAVE OUT FINAL PROCESSED DATA ###
 write_csv(panel_aid_admin1, "01_panel_data/panel_aid_admin1_health.csv")
 write_csv(panel_aid_admin2, "01_panel_data/panel_aid_admin2_health.csv")
-
-summary(lm(
-  formula = mean_nl ~ total_proj_admin2 +
-    donor_count_admin2 +
-    as.character(year),
-  data = panel_aid_admin2_fin
-))

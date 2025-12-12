@@ -23,7 +23,7 @@ pacman::p_load(
 )
 
 # Load utility functions
-source(here("scripts", "utils", "spatial_processing_utils.r"))
+source(here("02_scripts", "utils", "spatial_processing_utils.r"))
 
 # Process nightlight data for both admin levels
 admin_results <- process_admin_levels(
@@ -40,11 +40,27 @@ ssa_admin2 <- admin_results$admin2
 # Save processed nightlight data
 ssa_admin1 %>%
   st_drop_geometry() %>%
-  write_csv(., here("00_rawdata", "nightlights", "topcodefix", "processed_topcodefix_nl_admin1.csv"))
+  write_csv(
+    .,
+    here(
+      "00_rawdata",
+      "nightlights",
+      "topcodefix",
+      "processed_topcodefix_nl_admin1.csv"
+    )
+  )
 
 ssa_admin2 %>%
   st_drop_geometry() %>%
-  write_csv(., here("00_rawdata", "nightlights", "topcodefix", "processed_topcodefix_nl_admin2.csv"))
+  write_csv(
+    .,
+    here(
+      "00_rawdata",
+      "nightlights",
+      "topcodefix",
+      "processed_topcodefix_nl_admin2.csv"
+    )
+  )
 
 ### Now we estimate average under 5 mortality rates for each admin level
 years <- 2005:2015

@@ -1,1 +1,0 @@
-This folder is meant to store temporary files created in the do-files.

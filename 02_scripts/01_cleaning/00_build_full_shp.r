@@ -1,16 +1,56 @@
-# Build shape file for analysis 
-if (!require("pacman")){ 
+# Build shape file for analysis
+if (!require("pacman")) {
     install.packages("pacman")
 }
 
 pacman::p_load(
-  tidyverse,
-  here,
-  readr,
-  janitor,
-  sf,
-  geodata
+    tidyverse,
+    here,
+    readr,
+    janitor,
+    sf,
+    geodata
 )
+
+countries_iso3 <- c(
+    "DZA",
+    "BEN",
+    "BWA",
+    "BFA",
+    "BDI",
+    "CMR",
+    "CPV",
+    "CIV",
+    "EGY",
+    "GAB",
+    "GHA",
+    "GIN",
+    "KEN",
+    "LSO",
+    "LBR",
+    "MDG",
+    "MWI",
+    "MLI",
+    "MUS",
+    "MAR",
+    "MOZ",
+    "NAM",
+    "NER",
+    "NGA",
+    "STP",
+    "SEN",
+    "SLE",
+    "ZAF",
+    "SDN",
+    "SWZ",
+    "TZA",
+    "TGO",
+    "TUN",
+    "UGA",
+    "ZMB",
+    "ZWE"
+)
+
 
 # Try to download GADM data, first attempting level 2 then falling back to level 1 if needed
 shp_list <- lapply(countries_iso3, function(country) {

@@ -1,6 +1,5 @@
 # Cleaning datasets script
 # Set up and packages  ----------------------------------------------------
-setwd("C:/Users/eman7/Dropbox/GitHub/ra_work/Donor_fragmentation/")
 
 if (!require("pacman")) {
   install.packages("pacman")
@@ -57,7 +56,13 @@ dat <- dat %>%
       paymentyear %in% 2012:2015 ~ 3,
     )
   ) %>%
-  mutate(world_bank = ifelse(donor == "World Bank" & !precision_code %in% c("1", "2", "3"), 1, 0)) %>%
+  mutate(
+    world_bank = ifelse(
+      donor == "World Bank" & !precision_code %in% c("1", "2", "3"),
+      1,
+      0
+    )
+  ) %>%
   filter(
     gid_0 %in%
       countries_iso3 &
@@ -93,11 +98,14 @@ dat <- st_join(aid_points, st_make_valid(shp))
 setDT(dat)
 
 # Create HHI for admin2 level
-hhi_results_admin2 <- dat[, .(
-  total_disb_admin2 = sum(abs(disb_loc_evensplit), na.rm = TRUE),
-  total_early_projects = sum(early_impact == 1, na.rm = TRUE),
-  total_late_projects = sum(early_impact == 0, na.rm = TRUE)
-), by = .(GID_0, GID_2, paymentyear, donor)]
+hhi_results_admin2 <- dat[,
+  .(
+    total_disb_admin2 = sum(abs(disb_loc_evensplit), na.rm = TRUE),
+    total_early_projects = sum(early_impact == 1, na.rm = TRUE),
+    total_late_projects = sum(early_impact == 0, na.rm = TRUE)
+  ),
+  by = .(GID_0, GID_2, paymentyear, donor)
+]
 
 hhi_results_admin2 <- hhi_results_admin2[,
   {
@@ -109,21 +117,32 @@ hhi_results_admin2 <- hhi_results_admin2[,
       total_aid_admin2 = total_aid,
       donor_count_admin2 = uniqueN(donor),
       hhi_admin2 = sum((total_disb_admin2 / total_aid)^2, na.rm = TRUE),
-      frag_index_admin2 = 1 - sum((total_disb_admin2 / total_aid)^2, na.rm = TRUE),
+      frag_index_admin2 = 1 -
+        sum((total_disb_admin2 / total_aid)^2, na.rm = TRUE),
       frag_1_admin2 = 1 - max(total_disb_admin2 / total_aid, na.rm = TRUE),
-      frag_3_admin2 = 1 - sum(head(sort(total_disb_admin2 / total_aid, decreasing = TRUE), 3), na.rm = TRUE),
-      frag_below10_admin2 = sum((total_disb_admin2 / total_aid) < 0.10, na.rm = TRUE)
+      frag_3_admin2 = 1 -
+        sum(
+          head(sort(total_disb_admin2 / total_aid, decreasing = TRUE), 3),
+          na.rm = TRUE
+        ),
+      frag_below10_admin2 = sum(
+        (total_disb_admin2 / total_aid) < 0.10,
+        na.rm = TRUE
+      )
     )
   },
   by = .(GID_0, GID_2, paymentyear)
 ]
 
 # Create HHI for admin1 level
-hhi_results_admin1 <- dat[, .(
-  total_disb_admin1 = sum(abs(disb_loc_evensplit), na.rm = TRUE),
-  total_early_projects = sum(early_impact == 1, na.rm = TRUE),
-  total_late_projects = sum(early_impact == 0, na.rm = TRUE)
-), by = .(GID_0, GID_1, paymentyear, donor)]
+hhi_results_admin1 <- dat[,
+  .(
+    total_disb_admin1 = sum(abs(disb_loc_evensplit), na.rm = TRUE),
+    total_early_projects = sum(early_impact == 1, na.rm = TRUE),
+    total_late_projects = sum(early_impact == 0, na.rm = TRUE)
+  ),
+  by = .(GID_0, GID_1, paymentyear, donor)
+]
 
 hhi_results_admin1 <- hhi_results_admin1[,
   {
@@ -135,15 +154,22 @@ hhi_results_admin1 <- hhi_results_admin1[,
       total_aid_admin1 = total_aid,
       donor_count_admin1 = uniqueN(donor),
       hhi_admin1 = sum((total_disb_admin1 / total_aid)^2, na.rm = TRUE),
-      frag_index_admin1 = 1 - sum((total_disb_admin1 / total_aid)^2, na.rm = TRUE),
+      frag_index_admin1 = 1 -
+        sum((total_disb_admin1 / total_aid)^2, na.rm = TRUE),
       frag_1_admin1 = 1 - max(total_disb_admin1 / total_aid, na.rm = TRUE),
-      frag_3_admin1 = 1 - sum(head(sort(total_disb_admin1 / total_aid, decreasing = TRUE), 3), na.rm = TRUE),
-      frag_below10_admin1 = sum((total_disb_admin1 / total_aid) < 0.10, na.rm = TRUE)
+      frag_3_admin1 = 1 -
+        sum(
+          head(sort(total_disb_admin1 / total_aid, decreasing = TRUE), 3),
+          na.rm = TRUE
+        ),
+      frag_below10_admin1 = sum(
+        (total_disb_admin1 / total_aid) < 0.10,
+        na.rm = TRUE
+      )
     )
   },
   by = .(GID_0, GID_1, paymentyear)
 ]
-
 
 
 # Descriptives region count by admin level
@@ -156,8 +182,17 @@ n_distinct(hhi_results_admin2$GID_2)
 panel_aid_admin1 <- dat %>%
   sf::st_drop_geometry() %>%
   filter(!is.na(GID_1)) %>%
-  tidylog::inner_join(hhi_results_admin1, by = c("GID_0", "GID_1", "paymentyear")) %>%
-  select(GID_0, GID_1, paymentyear, ends_with("_admin1"), -contains("total_disb")) %>%
+  tidylog::inner_join(
+    hhi_results_admin1,
+    by = c("GID_0", "GID_1", "paymentyear")
+  ) %>%
+  select(
+    GID_0,
+    GID_1,
+    paymentyear,
+    ends_with("_admin1"),
+    -contains("total_disb")
+  ) %>%
   distinct()
 
 check <- panel_aid_admin1 %>%
@@ -168,8 +203,18 @@ check <- panel_aid_admin1 %>%
 panel_aid_admin2 <- dat %>%
   sf::st_drop_geometry() %>%
   filter(!is.na(GID_1)) %>%
-  tidylog::left_join(hhi_results_admin2, by = c("GID_0", "GID_2", "paymentyear")) %>%
-  select(GID_0, GID_1, GID_2, paymentyear, ends_with("_admin2"), -contains("total_disb")) %>%
+  tidylog::left_join(
+    hhi_results_admin2,
+    by = c("GID_0", "GID_2", "paymentyear")
+  ) %>%
+  select(
+    GID_0,
+    GID_1,
+    GID_2,
+    paymentyear,
+    ends_with("_admin2"),
+    -contains("total_disb")
+  ) %>%
   distinct()
 
 check <- panel_aid_admin2 %>%
@@ -221,7 +266,7 @@ admin1_afro <- read_csv("00_rawdata/ab_raw/processed/admin1_afro_panel.csv") %>%
   select(year, GID_0, GID_1, starts_with("mean_"), afro_count, wave)
 
 admin2_afro <- read_csv("00_rawdata/ab_raw/processed/admin2_afro_panel.csv") %>%
-  select(year, GID_0, GID_1, GID_2, starts_with("mean_"), afro_count, wave)
+  select(year, GID_0, GID_2, starts_with("mean_"), afro_count, wave)
 
 # Merge the Afro data into the panel data
 panel_aid_admin1 <- panel_aid_admin1 %>%
@@ -234,7 +279,7 @@ panel_aid_admin1 <- panel_aid_admin1 %>%
 panel_aid_admin2 <- panel_aid_admin2 %>%
   dplyr::inner_join(
     admin2_afro,
-    by = c("paymentyear" = "year", "GID_0", "GID_1", "GID_2")
+    by = c("paymentyear" = "year", "GID_0", "GID_2")
   ) %>%
   rename(year = paymentyear)
 
@@ -267,15 +312,24 @@ panel_aid_admin2 <- panel_aid_admin2 %>%
 # Select final data
 panel_aid_admin1_fin <- panel_aid_admin1 %>%
   select(
-    GID_0, GID_1, year,
-    starts_with("frag_"), starts_with("mean_"),
+    GID_0,
+    GID_1,
+    year,
+    starts_with("frag_"),
+    starts_with("mean_"),
     mean_nl = mean,
     sum_nl = sum,
     u5m,
     # capital_region,
-    total_early_admin1, total_late_admin1, total_proj_admin1,
-    total_aid_admin1, donor_count_admin1, hhi_admin1,
-    ln_pop_admin1, afro_count, wave,
+    total_early_admin1,
+    total_late_admin1,
+    total_proj_admin1,
+    total_aid_admin1,
+    donor_count_admin1,
+    hhi_admin1,
+    ln_pop_admin1,
+    afro_count,
+    wave,
     # distance_to_capital, capital_region, #spei_admin1,
     # nearest_city_dist, urban_share = Urban_share,
     # ge_pct
@@ -283,15 +337,25 @@ panel_aid_admin1_fin <- panel_aid_admin1 %>%
 
 panel_aid_admin2_fin <- panel_aid_admin2 %>%
   select(
-    GID_0, GID_1, GID_2, year,
-    starts_with("frag_"), starts_with("mean_"),
+    GID_0,
+    GID_1,
+    GID_2,
+    year,
+    starts_with("frag_"),
+    starts_with("mean_"),
     mean_nl = mean,
     sum_nl = sum,
     u5m,
     # capital_region,
-    total_early_admin2, total_late_admin2, total_proj_admin2,
-    total_aid_admin2, donor_count_admin2, hhi_admin2,
-    ln_pop_admin2, afro_count, wave,
+    total_early_admin2,
+    total_late_admin2,
+    total_proj_admin2,
+    total_aid_admin2,
+    donor_count_admin2,
+    hhi_admin2,
+    ln_pop_admin2,
+    afro_count,
+    wave,
     # distance_to_capital, capital_region, #spei_admin2,
     # nearest_city_dist, urban_share = Urban_share, ge_pct
   )

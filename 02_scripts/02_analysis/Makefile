@@ -7,8 +7,7 @@
 RSCRIPT = Rscript
 
 # Input data
-PANEL_DATA_MAIN = ../../01_panel_data/panel_aid_admin1_new.csv ../../01_panel_data/panel_aid_admin2_new.csv
-PANEL_DATA_HEALTH = ../../01_panel_data/panel_aid_admin1_health_fin.csv ../../01_panel_data/panel_aid_admin2_health_fin.csv
+PANEL_DATA_MAIN = ../../01_panel_data/panel_aid_admin1_fin.csv ../../01_panel_data/panel_aid_admin2_fin.csv
 
 # Output files
 TABLES_MAIN = ../../03_outputs/tabs/table1_ols.tex ../../03_outputs/tabs/table1_fe.tex ../../03_outputs/tabs/table2_cfe.tex ../../03_outputs/tabs/table2_cfe_u5m.tex
@@ -27,9 +26,9 @@ regressions: $(PANEL_DATA_MAIN)
 	cd ../.. && $(RSCRIPT) 02_scripts/02_analysis/05_run_regressions.R
 
 # Generate tables from regression results
-tables: regressions $(PANEL_DATA_HEALTH)
+tables: regressions $(PANEL_DATA_MAIN)
 	@echo "Generating regression tables..."
-	cd ../.. && $(RSCRIPT) 02_scripts/02_analysis/06_dreher_tables.R
+	cd ../.. && $(RSCRIPT) 02_scripts/02_analysis/06_new_regressions.R
 
 # Generate figures
 figures: $(PANEL_DATA_MAIN)

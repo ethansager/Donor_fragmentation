@@ -92,8 +92,8 @@ afro_merged <- afro_merged %>%
   )
 
 
-# Load utility function for recoding
-source(here("scripts", "utils", "afro_processing_utils.r"))
+# Load utility functions
+source(here("02_scripts", "utils", "afro_processing_utils.r"))
 
 afro_merged <- afro_merged %>%
   tidylog::mutate(
@@ -523,9 +523,6 @@ write_csv(
 
 
 ###### create panel to match ########
-
-# Load utility functions
-source(here("scripts", "utils", "afro_processing_utils.r"))
 
 # Process admin1 panel using utility function
 admin1_afro <- process_afro_panel(

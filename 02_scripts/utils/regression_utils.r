@@ -8,9 +8,14 @@
 #' @param capacity_var Column name for capacity variable (e.g., "mean_sgq_admin1")
 #' @param log_offset Small positive constant to add before taking log to avoid log(0) (default: 0.01)
 #' @return Data frame with added threshold, high_capacity, and nl_growth columns
-add_capacity_and_growth <- function(data, admin_id, capacity_var, log_offset = 0.01) {
+add_capacity_and_growth <- function(
+  data,
+  admin_id,
+  capacity_var,
+  log_offset = 0.01
+) {
   require(tidyverse)
-  
+
   data %>%
     mutate(
       threshold = mean(.data[[capacity_var]], na.rm = TRUE),
@@ -19,6 +24,7 @@ add_capacity_and_growth <- function(data, admin_id, capacity_var, log_offset = 0
     arrange(.data[[admin_id]], paymentyear) %>%
     group_by(.data[[admin_id]]) %>%
     mutate(
+      mean_nl = mean,
       lag_mean_nl = dplyr::lag(mean_nl),
       nl_growth = as.numeric(case_when(
         is.na(lag_mean_nl) ~ NA_real_,
@@ -38,16 +44,29 @@ add_capacity_and_growth <- function(data, admin_id, capacity_var, log_offset = 0
 #' @param frag_var Column name for fragmentation variable
 #' @param log_offset Small positive constant to add before taking log to avoid log(0) (default: 0.01)
 #' @return List with model results for high and low capacity groups
-run_capacity_regressions <- function(data, admin_id, aid_var, frag_var, log_offset = 0.01) {
+run_capacity_regressions <- function(
+  data,
+  admin_id,
+  aid_var,
+  frag_var,
+  log_offset = 0.01
+) {
   require(plm)
-  
+
   # Split data by capacity
   data_high <- data %>% filter(high_capacity == 1)
   data_low <- data %>% filter(high_capacity == 0)
-  
+
   # Create formula with log offset to avoid log(0)
-  formula_str <- paste0("log(lag(mean_nl,1)+", log_offset, ") ~ log(", aid_var, ") * ", frag_var)
-  
+  formula_str <- paste0(
+    "log(lag(mean_nl,1)+",
+    log_offset,
+    ") ~ log(",
+    aid_var,
+    ") * ",
+    frag_var
+  )
+
   # Run models
   model_high <- plm(
     as.formula(formula_str),
@@ -56,7 +75,7 @@ run_capacity_regressions <- function(data, admin_id, aid_var, frag_var, log_offs
     effect = "twoways",
     model = "within"
   )
-  
+
   model_low <- plm(
     as.formula(formula_str),
     data = data_low,
@@ -64,6 +83,6 @@ run_capacity_regressions <- function(data, admin_id, aid_var, frag_var, log_offs
     effect = "twoways",
     model = "within"
   )
-  
+
   return(list(high = model_high, low = model_low))
 }

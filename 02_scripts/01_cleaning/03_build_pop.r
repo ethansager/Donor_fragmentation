@@ -15,7 +15,7 @@ pacman::p_load(
 )
 
 # Load utility functions
-source(here("scripts", "utils", "spatial_processing_utils.r"))
+source(here("02_scripts", "utils", "spatial_processing_utils.r"))
 
 # Population grid WorldPop ----------------------------------------------
 # Process population data for both admin levels using utility function

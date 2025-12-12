@@ -9,12 +9,12 @@ all: cleaning analysis tables
 # Run data cleaning pipeline
 cleaning:
 	@echo "Running data cleaning pipeline..."
-	$(MAKE) -C scripts/01_cleaning
+	$(MAKE) -C 02_scripts/01_cleaning
 
 # Run analysis pipeline
 analysis: cleaning
 	@echo "Running analysis pipeline..."
-	$(MAKE) -C scripts/02_analysis
+	$(MAKE) -C 02_scripts/02_analysis
 
 # Generate all tables (shortcut for analysis target)
 tables: analysis

@@ -7,7 +7,7 @@ library(stargazer)
 # Assuming your data is in a dataframe with variables averaged over 3-year paymentyears
 # First create the growth variable
 #full data
-panel_aid_admin2 <- read.csv("01_panel_data/panel_aid_admin2.csv") %>%
+panel_aid_admin2 <- read.csv(here("01_panel_data", "panel_aid_admin2.csv") %>%
   arrange(GID_2, paymentyear) %>%
   group_by(GID_2) %>%
   mutate(mean_nl_base = first(mean_nl)) %>%  # more explicit than mean_nl[1]
@@ -15,7 +15,7 @@ panel_aid_admin2 <- read.csv("01_panel_data/panel_aid_admin2.csv") %>%
   pdata.frame(index = c("GID_2", "paymentyear")) %>%
   mutate(mean_nl_growth = mean_nl - lag(mean_nl))
 
-panel_aid_admin1 <- read.csv("01_panel_data/panel_aid_admin1.csv") %>%
+panel_aid_admin1 <- read.csv(here("01_panel_data", "panel_aid_admin1.csv")) %>%
   arrange(GID_1, paymentyear) %>%
   group_by(GID_1) %>%
   mutate(mean_nl_base = first(mean_nl)) %>%  # more explicit than mean_nl[1]
@@ -128,31 +128,31 @@ model8_fe <- lm(mean_nl ~
                    log(distance_to_capital) +
                    factor(GID_2)-1,
                  data = panel_data)
-summary
-# Calculate clustered standard errors at region level
-all_models <- 
-                  
-for(i in 1:length(all_models)) {
-  all_models[[i]]$vcov <- vcovHC(all_models[[i]], cluster = "group")
-}
 
-# Create regression table
-stargazer(all_models,
-          type = "text",
-          title = "OLS and region-fixed effects, ADM2, 2000-12")
+# Calculate clustered standard errors at region level
+
+                  
+# for(i in 1:length(all_models)) {
+#   all_models[[i]]$vcov <- vcovHC(all_models[[i]], cluster = "group")
+# }
+
+# # Create regression table
+# stargazer(all_models,
+#           type = "text",
+#           title = "OLS and region-fixed effects, ADM2, 2000-12")
           
-column.labels = c("OLS", "FE", "OLS", "FE", "OLS", "FE"),
-          dep.var.labels = "Growth in night-time light",
-          covariate.labels = c("(Log) Total aid, t-1",
-                              "(Log) No. of projects, t-1",
-                              "(Log) Early-impact aid, t-1",
-                              "(Log) Late-impact aid, t-1",
-                              "(Log) No. of early-impact projects, t-1",
-                              "(Log) No. of late-impact projects, t-1",
-                              "(Log) Night-time light in 2000",
-                              "(Log) Size of population, t-1",
-                              "Population growth",
-                              "(Log) Area",
-                              "(Log) Distance to capital"),
-          notes = "OLS and region-fixed-effects regressions (FE). Dependent variable: Growth in night-time light. Standard errors, clustered at the region-level, in parentheses: * p < 0.1, ** p < 0.05, *** p < 0.01.")
+# column.labels = c("OLS", "FE", "OLS", "FE", "OLS", "FE"),
+#           dep.var.labels = "Growth in night-time light",
+#           covariate.labels = c("(Log) Total aid, t-1",
+#                               "(Log) No. of projects, t-1",
+#                               "(Log) Early-impact aid, t-1",
+#                               "(Log) Late-impact aid, t-1",
+#                               "(Log) No. of early-impact projects, t-1",
+#                               "(Log) No. of late-impact projects, t-1",
+#                               "(Log) Night-time light in 2000",
+#                               "(Log) Size of population, t-1",
+#                               "Population growth",
+#                               "(Log) Area",
+#                               "(Log) Distance to capital"),
+#           notes = "OLS and region-fixed-effects regressions (FE). Dependent variable: Growth in night-time light. Standard errors, clustered at the region-level, in parentheses: * p < 0.1, ** p < 0.05, *** p < 0.01.")
 

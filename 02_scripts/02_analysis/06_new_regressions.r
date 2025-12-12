@@ -21,8 +21,8 @@ pacman::p_load(
 )
 
 
-panel_aid_admin1 <- read_csv("01_panel_data/panel_aid_admin1_fin.csv")
-panel_aid_admin2 <- read_csv("01_panel_data/panel_aid_admin2_fin.csv")
+panel_aid_admin1 <- read_csv(here("01_panel_data", "panel_aid_admin1_fin.csv"))
+panel_aid_admin2 <- read_csv(here("01_panel_data", "panel_aid_admin2_fin.csv"))
 
 
 # Ensure proper ordering before applying lag()
@@ -37,7 +37,7 @@ panel_aid_admin1 <- panel_aid_admin1 %>%
       TRUE ~
         ((log(mean_nl + 0.01) - log(lag_mean_nl + 0.01)) /
           log(lag_mean_nl + 0.01)) *
-          100 # Calculate percentage growth with logging
+        100 # Calculate percentage growth with logging
     ),
     lag_hhi_admin1 = dplyr::lag(frag_index_admin1),
     lag_pop_admin1 = dplyr::lag(ln_pop_admin1),
@@ -63,7 +63,7 @@ panel_aid_admin2 <- panel_aid_admin2 %>%
       TRUE ~
         ((log(mean_nl + 0.01) - log(lag_mean_nl + 0.01)) /
           log(lag_mean_nl + 0.01)) *
-          100 # Calculate percentage growth with logging
+        100 # Calculate percentage growth with logging
     ),
     lag_hhi_admin2 = dplyr::lag(frag_index_admin2),
     lag_pop_admin2 = dplyr::lag(ln_pop_admin2),
@@ -171,8 +171,8 @@ high_2_ols <- perform_ols_analysis(high_admin2, "GID_2", "nl_growth", "GID_0")
 low_2_ols <- perform_ols_analysis(low_admin2, "GID_2", "nl_growth", "GID_0")
 
 # Remove the LaTeX file for Table 1 OLS if it exists
-if (file.exists("table1_ols.tex")) {
-  file.remove("table1_ols.tex")
+if (file.exists(here("03_output", "tabs", "table1_ols.tex"))) {
+  file.remove(here("03_output", "tabs", "table1_ols.tex"))
 }
 
 etable(
@@ -192,7 +192,7 @@ etable(
   signif.code = c("***" = 0.01, "**" = 0.05, "*" = 0.1), # <-- proper format
   fitstat = c("n", "r2"),
   tex = TRUE, # Save as LaTeX
-  file = "table1_ols.tex" # Specify output file
+  file = here("03_output", "tabs", "table1_ols.tex") # Specify output file
 )
 
 #### Table 1 Panel B
@@ -238,8 +238,8 @@ perform_fe_analysis <- function(data, admin_level, outcome_var, cluster_var) {
 }
 
 # Remove the LaTeX file for Table 1 OLS if it exists
-if (file.exists("table1_fe.tex")) {
-  file.remove("table1_fe.tex")
+if (file.exists(here("03_output", "tabs", "table1_fe.tex"))) {
+  file.remove(here("03_output", "tabs", "table1_fe.tex"))
 }
 
 high_1 <- perform_fe_analysis(high_admin1, "GID_1", "nl_growth", "GID_0")
@@ -264,7 +264,7 @@ etable(
   signif.code = c("***" = 0.01, "**" = 0.05, "*" = 0.1), # <-- proper format
   fitstat = c("n", "r2"),
   tex = TRUE, # Save as LaTeX
-  file = "table1_fe.tex" # Specify output file
+  file = here("03_output", "tabs", "table1_fe.tex") # Specify output file
 )
 
 ### CFA for country govs table 1 Panel C
@@ -369,8 +369,8 @@ stage_2_low_admin2 <- perform_cfa_analysis(
 )
 
 # Remove the LaTeX file for Table 2 CFE if it exists
-if (file.exists("table2_cfe.tex")) {
-  file.remove("table2_cfe.tex")
+if (file.exists(here("03_output", "tabs", "table2_cfe.tex"))) {
+  file.remove(here("03_output", "tabs", "table2_cfe.tex"))
 }
 
 etable(
@@ -391,7 +391,7 @@ etable(
   signif.code = c("***" = 0.01, "**" = 0.05, "*" = 0.1), # <-- proper format
   fitstat = c("n", "r2"),
   tex = TRUE, # Save as LaTeX
-  file = "table2_cfe.tex" # Specify output file
+  file = here("03_output", "tabs", "table2_cfe.tex") # Specify output file
 )
 
 # Perform the analysis for high and low admin1 and admin2 HEALTH
@@ -424,6 +424,9 @@ stage_2_low_admin2 <- perform_cfa_analysis(
   "GID_2"
 )
 
+#------------------------------------------------------------------------------#
+#  Now we run with new dependent ----
+#------------------------------------------------------------------------------#
 
 etable(
   stage_2_high_admin1,
@@ -443,7 +446,7 @@ etable(
   signif.code = c("***" = 0.01, "**" = 0.05, "*" = 0.1), # <-- proper format
   fitstat = c("n", "r2"),
   tex = TRUE, # Save as LaTeX
-  file = "table2_cfe_u5m.tex" # Specify output file
+  file = here("03_output", "tabs", "table2_cfe_u5m.tex") # Specify output file
 )
 
 
@@ -565,7 +568,7 @@ etable(
   signif.code = c("***" = 0.01, "**" = 0.05, "*" = 0.1), # <-- proper format
   fitstat = c("n", "r2"),
   tex = TRUE, # Save as LaTeX
-  file = "table2_cfe_frag_ind.tex" # Specify output file
+  file = here("03_output", "tabs", "table2_cfe_frag_ind.tex") # Specify output file
 )
 
 

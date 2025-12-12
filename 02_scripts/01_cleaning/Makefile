@@ -20,11 +20,12 @@ AFRO_PANEL = $(AFRO_PROCESSED)/admin1_afro_panel.csv $(AFRO_PROCESSED)/admin2_af
 DEP_VARS = ../../00_rawdata/processed_dep_vars_admin1.csv ../../00_rawdata/processed_dep_vars_admin2.csv
 NL_DATA = $(NL_DIR)/processed_topcodefix_nl_admin1.csv $(NL_DIR)/processed_topcodefix_nl_admin2.csv
 POPULATION = $(POP_DIR)/admin1_population.csv $(POP_DIR)/admin2_population.csv
+PANEL_DATA_BASE = $(PANEL_DIR)/panel_aid_admin1.csv $(PANEL_DIR)/panel_aid_admin2.csv
 PANEL_DATA = $(PANEL_DIR)/panel_aid_admin1_fin.csv $(PANEL_DIR)/panel_aid_admin2_fin.csv
 
 
 # Main target - build all cleaned datasets
-all: shapefiles afrobarometer dependent-vars population panel-data
+all: shapefiles afrobarometer nightlights dependent-vars population panel-data panel-data-base
 	@echo "All data cleaning complete!"
 
 # Build shapefiles from GADM data
@@ -41,12 +42,21 @@ $(AFRO_PANEL): 01_build_afro_full.r $(SHAPEFILES)
 	@echo "Processing Afrobarometer data..."
 	cd ../.. && $(RSCRIPT) 02_scripts/01_cleaning/01_build_afro_full.r
 
+# Build nightlights 
+nightlights: $(NL_DATA)
+
+$(NL_DATA): 02_night_light_calc.r $(SHAPEFILES) ../utils/spatial_processing_utils.r
+	@echo "Building nightlights data..."
+	cd ../.. && $(RSCRIPT) 02_scripts/01_cleaning/02_night_light_calc.r
+
 # Build dependent variables (nightlights, U5M)
 dependent-vars: $(DEP_VARS)
 
 $(DEP_VARS): 02_build_dependent_vars.r $(SHAPEFILES) ../utils/spatial_processing_utils.r
 	@echo "Building dependent variables..."
 	cd ../.. && $(RSCRIPT) 02_scripts/01_cleaning/02_build_dependent_vars.r
+
+
 
 # Build population data
 population: $(POPULATION)
@@ -55,10 +65,17 @@ $(POPULATION): 03_build_pop.r $(SHAPEFILES)
 	@echo "Building population data..."
 	cd ../.. && $(RSCRIPT) 02_scripts/01_cleaning/03_build_pop.r
 
-# Build final panel datasets
-panel-data: $(PANEL_DATA) $(PANEL_DATA_HEALTH)
+# Build basepanel datasets
+panel-data-base: $(PANEL_DATA_BASE)
 
-$(PANEL_DATA): 04_create_iv.r $(DEP_VARS) $(POPULATION)
+$(PANEL_DATA_BASE): 03_geo_clean.r $(DEP_VARS) $(POPULATION) $(AFRO_PANEL)
+	@echo "Building panel data (main)..."
+	cd ../.. && $(RSCRIPT) 02_scripts/01_cleaning/03_geo_clean.r
+
+# Build final panel datasets
+panel-data: $(PANEL_DATA)
+
+$(PANEL_DATA): 04_create_iv.r $(DEP_VARS) $(POPULATION) $(PANEL_DATA_BASE)
 	@echo "Building panel data (main)..."
 	cd ../.. && $(RSCRIPT) 02_scripts/01_cleaning/04_create_iv.r
 
