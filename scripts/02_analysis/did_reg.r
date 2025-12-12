@@ -34,7 +34,10 @@ panel_aid_admin1 <- panel_aid_admin1 %>%
     lag_mean_nl = dplyr::lag(mean_nl), # Get the value from the previous year
     nl_growth = case_when(
       is.na(lag_mean_nl) ~ NA_real_, # No growth for the first year
-      TRUE ~ ((log(mean_nl + 0.01) - log(lag_mean_nl + 0.01)) / log(lag_mean_nl + 0.01)) * 100 # Calculate percentage growth with logging
+      TRUE ~
+        ((log(mean_nl + 0.01) - log(lag_mean_nl + 0.01)) /
+          log(lag_mean_nl + 0.01)) *
+          100 # Calculate percentage growth with logging
     ),
     lag_hhi_admin1 = dplyr::lag(frag_index_admin1),
     lag_pop_admin1 = dplyr::lag(ln_pop_admin1),
@@ -57,7 +60,10 @@ panel_aid_admin2 <- panel_aid_admin2 %>%
     lag_mean_nl = dplyr::lag(mean_nl), # Get the value from the previous year
     nl_growth = case_when(
       is.na(lag_mean_nl) ~ NA_real_, # No growth for the first year
-      TRUE ~ ((log(mean_nl + 0.01) - log(lag_mean_nl + 0.01)) / log(lag_mean_nl + 0.01)) * 100 # Calculate percentage growth with logging
+      TRUE ~
+        ((log(mean_nl + 0.01) - log(lag_mean_nl + 0.01)) /
+          log(lag_mean_nl + 0.01)) *
+          100 # Calculate percentage growth with logging
     ),
     lag_hhi_admin2 = dplyr::lag(frag_index_admin2),
     lag_pop_admin2 = dplyr::lag(ln_pop_admin2),
@@ -75,12 +81,20 @@ panel_aid_admin2 <- panel_aid_admin2 %>%
 # Split the sample into high and low SGQ
 panel_aid_admin1 <- panel_aid_admin1 %>%
   mutate(
-    med_sgq_admin1 = if_else(mean_sgq_admin1 > quantile(mean_sgq_admin1, 0.75, na.rm = TRUE), 1, 0)
+    med_sgq_admin1 = if_else(
+      mean_sgq_admin1 > quantile(mean_sgq_admin1, 0.75, na.rm = TRUE),
+      1,
+      0
+    )
   )
 
 panel_aid_admin2 <- panel_aid_admin2 %>%
   mutate(
-    med_sgq_admin2 = if_else(mean_sgq_admin2 > quantile(mean_sgq_admin2, 0.75, na.rm = TRUE), 1, 0)
+    med_sgq_admin2 = if_else(
+      mean_sgq_admin2 > quantile(mean_sgq_admin2, 0.75, na.rm = TRUE),
+      1,
+      0
+    )
   )
 
 panel_aid_admin1 %>%
@@ -107,6 +121,7 @@ low_admin2 <- panel_aid_admin2 %>%
 summary(high_admin1)
 
 # Update regressions to use lagged variables
+
 #### Table 1 Panel B
 perform_ols_analysis <- function(data, admin_level, outcome_var, cluster_var) {
   # Harmonize variables by admin level
@@ -114,6 +129,7 @@ perform_ols_analysis <- function(data, admin_level, outcome_var, cluster_var) {
     data <- data %>%
       dplyr::mutate(
         total_aid = total_aid_admin1,
+        frag_index = lag_hhi_admin1,
         lag_log_pop = lag_pop_admin1,
         lag_donor_count = lag_donor_count_admin1,
         lag_total_proj = lag_total_proj_admin1,
@@ -123,6 +139,7 @@ perform_ols_analysis <- function(data, admin_level, outcome_var, cluster_var) {
     data <- data %>%
       dplyr::mutate(
         total_aid = total_aid_admin2,
+        frag_index = lag_hhi_admin2,
         lag_log_pop = lag_pop_admin2,
         lag_donor_count = lag_donor_count_admin2,
         lag_total_proj = lag_total_proj_admin2,
@@ -134,7 +151,7 @@ perform_ols_analysis <- function(data, admin_level, outcome_var, cluster_var) {
   stage_2_formula <- as.formula(
     paste0(
       outcome_var,
-      " ~ lag_donor_count * lag_total_proj + lag_total_aid + lag_log_pop"
+      " ~ frag_index + lag_total_aid + lag_log_pop"
     )
   )
 
@@ -185,6 +202,7 @@ perform_fe_analysis <- function(data, admin_level, outcome_var, cluster_var) {
     data <- data %>%
       dplyr::mutate(
         total_aid = total_aid_admin1,
+        frag_index = lag_hhi_admin1,
         lag_log_pop = lag_pop_admin1,
         lag_donor_count = lag_donor_count_admin1,
         lag_total_proj = lag_total_proj_admin1,
@@ -194,18 +212,18 @@ perform_fe_analysis <- function(data, admin_level, outcome_var, cluster_var) {
     data <- data %>%
       dplyr::mutate(
         total_aid = total_aid_admin2,
+        frag_index = lag_hhi_admin2,
         lag_log_pop = lag_pop_admin2,
         lag_donor_count = lag_donor_count_admin2,
         lag_total_proj = lag_total_proj_admin2,
         lag_total_aid = lag_total_aid_admin2
       )
   }
-
   # Regress the outcome variable on predictors
   stage_2_formula <- as.formula(
     paste0(
       outcome_var,
-      " ~ lag_donor_count * lag_total_proj + lag_total_aid + lag_log_pop | GID_0^year + ",
+      " ~ frag_index + lag_total_aid + lag_log_pop | GID_0^year + ",
       admin_level
     )
   )
@@ -250,12 +268,19 @@ etable(
 )
 
 ### CFA for country govs table 1 Panel C
-perform_cfa_analysis <- function(data, admin_level, outcome_var, iv_var, cluster_var) {
+perform_cfa_analysis <- function(
+  data,
+  admin_level,
+  outcome_var,
+  iv_var,
+  cluster_var
+) {
   # Harmonize variables by admin level
   if (admin_level == "GID_1") {
     data <- data %>%
       dplyr::mutate(
         total_aid = total_aid_admin1,
+        frag_index = lag_hhi_admin1,
         lag_log_pop = lag_pop_admin1,
         lag_donor_count = lag_donor_count_admin1,
         lag_total_proj = lag_total_proj_admin1,
@@ -265,6 +290,7 @@ perform_cfa_analysis <- function(data, admin_level, outcome_var, iv_var, cluster
     data <- data %>%
       dplyr::mutate(
         total_aid = total_aid_admin2,
+        frag_index = lag_hhi_admin2,
         lag_log_pop = lag_pop_admin2,
         lag_donor_count = lag_donor_count_admin2,
         lag_total_proj = lag_total_proj_admin2,
@@ -275,7 +301,10 @@ perform_cfa_analysis <- function(data, admin_level, outcome_var, iv_var, cluster
   # Stage 1: Regress total aid on the instrumental variable
   stage_1_formula <- as.formula(
     paste0(
-      "total_aid ~ ", iv_var, " + lag_log_pop | GID_0^year + ", admin_level
+      "total_aid ~ ",
+      iv_var,
+      " + lag_log_pop | GID_0^year + ",
+      admin_level
     )
   )
 
@@ -294,7 +323,7 @@ perform_cfa_analysis <- function(data, admin_level, outcome_var, iv_var, cluster
   stage_2_formula <- as.formula(
     paste0(
       outcome_var,
-      " ~ lag_donor_count * lag_total_proj + lag_total_aid + lag_log_pop + cfa | GID_0^year + ",
+      " ~ frag_index + lag_total_aid + lag_log_pop + cfa | GID_0^year + ",
       admin_level
     )
   )
@@ -308,11 +337,36 @@ perform_cfa_analysis <- function(data, admin_level, outcome_var, iv_var, cluster
   return(stage_2)
 }
 
+
 # Perform the analysis for high and low admin1 and admin2
-stage_2_high_admin1 <- perform_cfa_analysis(high_admin1, "GID_1", "nl_growth", "IV_lag", "GID_1")
-stage_2_low_admin1 <- perform_cfa_analysis(low_admin1, "GID_1", "nl_growth", "IV_lag", "GID_1")
-stage_2_high_admin2 <- perform_cfa_analysis(high_admin2, "GID_2", "nl_growth", "IV_lag", "GID_2")
-stage_2_low_admin2 <- perform_cfa_analysis(low_admin2, "GID_2", "nl_growth", "IV_lag", "GID_2")
+stage_2_high_admin1 <- perform_cfa_analysis(
+  high_admin1,
+  "GID_1",
+  "nl_growth",
+  "IV_lag",
+  "GID_0"
+)
+stage_2_low_admin1 <- perform_cfa_analysis(
+  low_admin1,
+  "GID_1",
+  "nl_growth",
+  "IV_lag",
+  "GID_0"
+)
+stage_2_high_admin2 <- perform_cfa_analysis(
+  high_admin2,
+  "GID_2",
+  "nl_growth",
+  "IV_lag",
+  "GID_0"
+)
+stage_2_low_admin2 <- perform_cfa_analysis(
+  low_admin2,
+  "GID_2",
+  "nl_growth",
+  "IV_lag",
+  "GID_0"
+)
 
 # Remove the LaTeX file for Table 2 CFE if it exists
 if (file.exists("table2_cfe.tex")) {
@@ -341,10 +395,34 @@ etable(
 )
 
 # Perform the analysis for high and low admin1 and admin2 HEALTH
-stage_2_high_admin1 <- perform_cfa_analysis(high_admin1, "GID_1", "u5m", "IV_lag", "GID_1")
-stage_2_low_admin1 <- perform_cfa_analysis(low_admin1, "GID_1", "u5m", "IV_lag", "GID_1")
-stage_2_high_admin2 <- perform_cfa_analysis(high_admin2, "GID_2", "u5m", "IV_lag", "GID_2")
-stage_2_low_admin2 <- perform_cfa_analysis(low_admin2, "GID_2", "u5m", "IV_lag", "GID_2")
+stage_2_high_admin1 <- perform_cfa_analysis(
+  high_admin1,
+  "GID_1",
+  "u5m",
+  "IV_lag",
+  "GID_1"
+)
+stage_2_low_admin1 <- perform_cfa_analysis(
+  low_admin1,
+  "GID_1",
+  "u5m",
+  "IV_lag",
+  "GID_1"
+)
+stage_2_high_admin2 <- perform_cfa_analysis(
+  high_admin2,
+  "GID_2",
+  "u5m",
+  "IV_lag",
+  "GID_2"
+)
+stage_2_low_admin2 <- perform_cfa_analysis(
+  low_admin2,
+  "GID_2",
+  "u5m",
+  "IV_lag",
+  "GID_2"
+)
 
 
 etable(
@@ -372,7 +450,13 @@ etable(
 # Now we are just looking at frag indicators no interaction
 
 ### CFA for country govs table 1 Panel C
-perform_cfa_analysis_frag <- function(data, admin_level, outcome_var, iv_var, cluster_var) {
+perform_cfa_analysis_frag <- function(
+  data,
+  admin_level,
+  outcome_var,
+  iv_var,
+  cluster_var
+) {
   # Harmonize variables by admin level
   if (admin_level == "GID_1") {
     data <- data %>%
@@ -399,7 +483,10 @@ perform_cfa_analysis_frag <- function(data, admin_level, outcome_var, iv_var, cl
   # Stage 1: Regress total aid on the instrumental variable
   stage_1_formula <- as.formula(
     paste0(
-      "total_aid ~ ", iv_var, " + lag_log_pop | GID_0^year + ", admin_level
+      "total_aid ~ ",
+      iv_var,
+      " + lag_log_pop | GID_0^year + ",
+      admin_level
     )
   )
 
@@ -432,10 +519,34 @@ perform_cfa_analysis_frag <- function(data, admin_level, outcome_var, iv_var, cl
 }
 
 # Perform the analysis for high and low admin1 and admin2
-frag_high_admin1 <- perform_cfa_analysis_frag(high_admin1, "GID_1", "nl_growth", "IV_lag", "GID_1")
-frag_low_admin1 <- perform_cfa_analysis_frag(low_admin1, "GID_1", "nl_growth", "IV_lag", "GID_1")
-frag_high_admin2 <- perform_cfa_analysis_frag(high_admin2, "GID_2", "nl_growth", "IV_lag", "GID_2")
-frag_low_admin2 <- perform_cfa_analysis_frag(low_admin2, "GID_2", "nl_growth", "IV_lag", "GID_2")
+frag_high_admin1 <- perform_cfa_analysis_frag(
+  high_admin1,
+  "GID_1",
+  "nl_growth",
+  "IV_lag",
+  "GID_0"
+)
+frag_low_admin1 <- perform_cfa_analysis_frag(
+  low_admin1,
+  "GID_1",
+  "nl_growth",
+  "IV_lag",
+  "GID_0"
+)
+frag_high_admin2 <- perform_cfa_analysis_frag(
+  high_admin2,
+  "GID_2",
+  "nl_growth",
+  "IV_lag",
+  "GID_0"
+)
+frag_low_admin2 <- perform_cfa_analysis_frag(
+  low_admin2,
+  "GID_2",
+  "nl_growth",
+  "IV_lag",
+  "GID_0"
+)
 
 
 etable(
@@ -458,5 +569,5 @@ etable(
 )
 
 
-
-DescTools::Desc(panel_aid_admin1$mean_sgq_admin1)
+DescTools::Desc(panel_aid_admin1$nl_growth)
+DescTools::Desc(panel_aid_admin2$nl_growth)
