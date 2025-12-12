@@ -3,7 +3,7 @@
 
 .PHONY: all regressions tables figures clean help
 
-# R command (adjust if needed for your environment)
+# R command
 RSCRIPT = Rscript
 
 # Input data
@@ -11,10 +11,10 @@ PANEL_DATA_MAIN = ../../01_panel_data/panel_aid_admin1_new.csv ../../01_panel_da
 PANEL_DATA_HEALTH = ../../01_panel_data/panel_aid_admin1_health_fin.csv ../../01_panel_data/panel_aid_admin2_health_fin.csv
 
 # Output files
-TABLES_MAIN = ../../table1_ols.tex ../../table1_fe.tex ../../table2_cfe.tex ../../table2_cfe_u5m.tex
-TABLES_HEALTH = ../../table1_ols_health.tex ../../table1_fe_health.tex ../../table2_cfe_health.tex ../../table2_cfe_u5m_health.tex
-SUMMARY_TABLES = ../../summary_table_admin1.tex ../../summary_table_admin2.tex
-MODEL_OUTPUT = ../../ols_models.txt ../../fe_models_health.txt ../../fe_models.tex ../../ols_models_health.txt
+TABLES_MAIN = ../../03_outputs/tabs/table1_ols.tex ../../03_outputs/tabs/table1_fe.tex ../../03_outputs/tabs/table2_cfe.tex ../../03_outputs/tabs/table2_cfe_u5m.tex
+TABLES_HEALTH = ../../03_outputs/tabs/table1_ols_health.tex ../../03_outputs/tabs/table1_fe_health.tex ../../03_outputs/tabs/table2_cfe_health.tex ../../03_outputs/tabs/table2_cfe_u5m_health.tex
+SUMMARY_TABLES = ../../03_outputs/tabs/summary_table_admin1.tex ../../03_outputs/tabs/summary_table_admin2.tex
+MODEL_OUTPUT = ../../03_outputs/tabs/ols_models.txt ../../03_outputs/tabs/fe_models_health.txt ../../03_outputs/tabs/fe_models.tex ../../03_outputs/tabs/ols_models_health.txt
 FIGURES = # Add figure files if they are generated
 
 # Main target - run all analysis
@@ -24,17 +24,17 @@ all: regressions tables
 # Run regressions
 regressions: $(PANEL_DATA_MAIN)
 	@echo "Running regression analysis..."
-	cd ../.. && $(RSCRIPT) scripts/02_analysis/05_run_regressions.R
+	cd ../.. && $(RSCRIPT) 02_scripts/02_analysis/05_run_regressions.R
 
 # Generate tables from regression results
 tables: regressions $(PANEL_DATA_HEALTH)
 	@echo "Generating regression tables..."
-	cd ../.. && $(RSCRIPT) scripts/02_analysis/06_dreher_tables.R
+	cd ../.. && $(RSCRIPT) 02_scripts/02_analysis/06_dreher_tables.R
 
 # Generate figures
 figures: $(PANEL_DATA_MAIN)
 	@echo "Generating figures..."
-	cd ../.. && $(RSCRIPT) "scripts/02_analysis/Make figure 1 and 2.r"
+	cd ../.. && $(RSCRIPT) "02_scripts/02_analysis/Make figure 1 and 2.r"
 
 # Clean generated outputs
 clean:

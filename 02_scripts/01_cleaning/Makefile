@@ -32,35 +32,35 @@ shapefiles: $(SHAPEFILES)
 
 $(SHAPEFILES): 00_build_full_shp.r
 	@echo "Building shapefiles..."
-	cd ../.. && $(RSCRIPT) scripts/01_cleaning/00_build_full_shp.r
+	cd ../.. && $(RSCRIPT) 02_scripts/01_cleaning/00_build_full_shp.r
 
 # Process Afrobarometer data
 afrobarometer: $(AFRO_PANEL)
 
 $(AFRO_PANEL): 01_build_afro_full.r $(SHAPEFILES)
 	@echo "Processing Afrobarometer data..."
-	cd ../.. && $(RSCRIPT) scripts/01_cleaning/01_build_afro_full.r
+	cd ../.. && $(RSCRIPT) 02_scripts/01_cleaning/01_build_afro_full.r
 
 # Build dependent variables (nightlights, U5M)
 dependent-vars: $(DEP_VARS)
 
 $(DEP_VARS): 02_build_dependent_vars.r $(SHAPEFILES) ../utils/spatial_processing_utils.r
 	@echo "Building dependent variables..."
-	cd ../.. && $(RSCRIPT) scripts/01_cleaning/02_build_dependent_vars.r
+	cd ../.. && $(RSCRIPT) 02_scripts/01_cleaning/02_build_dependent_vars.r
 
 # Build population data
 population: $(POPULATION)
 
 $(POPULATION): 03_build_pop.r $(SHAPEFILES)
 	@echo "Building population data..."
-	cd ../.. && $(RSCRIPT) scripts/01_cleaning/03_build_pop.r
+	cd ../.. && $(RSCRIPT) 02_scripts/01_cleaning/03_build_pop.r
 
 # Build final panel datasets
 panel-data: $(PANEL_DATA) $(PANEL_DATA_HEALTH)
 
 $(PANEL_DATA): 04_create_iv.r $(DEP_VARS) $(POPULATION)
 	@echo "Building panel data (main)..."
-	cd ../.. && $(RSCRIPT) scripts/01_cleaning/04_create_iv.r
+	cd ../.. && $(RSCRIPT) 02_scripts/01_cleaning/04_create_iv.r
 
 # Clean all generated files
 clean:
@@ -81,7 +81,7 @@ help:
 	@echo "  make all            - Run entire cleaning pipeline"
 	@echo "  make shapefiles     - Build GADM shapefiles"
 	@echo "  make afrobarometer  - Process Afrobarometer survey data"
-	@echo "  make dependent-vars - Build dependent variables (nightlights, U5M)"
+	@echo "  make dependent-vars - Build dependent variables"
 	@echo "  make population     - Build population data"
 	@echo "  make panel-data     - Build final panel datasets"
 	@echo "  make clean          - Remove all generated files"
