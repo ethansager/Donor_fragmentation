@@ -1,11 +1,12 @@
 # Create IV
-library(tidyverse)
-library(data.table)
-library(tidyr)
-library(here)
-library(ivreg)
-library(sf)
-library(zoo)
+pacman::p_load(
+    tidyverse,
+    data.table,
+    tidyr,
+    here,
+    sf,
+    zoo
+)
 
 # get country isos for gadm
 countries_iso3 <- read_csv(
@@ -18,7 +19,13 @@ countries_iso3 <- read_csv(
 
 # Read in data
 aid_data <- read_csv(here("00_rawdata", "GODAD_projectlevel.csv")) %>%
-    mutate(world_bank = ifelse(donor == "World Bank" & !precision_code %in% c("1", "2", "3"), 1, 0)) %>%
+    mutate(
+        world_bank = ifelse(
+            donor == "World Bank" & !precision_code %in% c("1", "2", "3"),
+            1,
+            0
+        )
+    ) %>%
     filter(
         gid_0 %in%
             countries_iso3 &
@@ -103,7 +110,6 @@ frac_data <- read_csv("00_rawdata/DPI2020.csv") %>%
     select(donor = countryname, year, frac_full)
 # Estimate weighted average of donor fraction for World Bank
 
-
 votes <- read_csv("00_rawdata/pdfs/wb_vote_shares.csv") %>%
     mutate(
         Country = str_replace(Country, "USA", "United States"),
@@ -133,7 +139,6 @@ votes <- read_csv("00_rawdata/pdfs/wb_vote_shares.csv") %>%
     mutate(donor = "World Bank")
 
 
-
 frac_data <- bind_rows(frac_data, votes)
 
 donor_countries_look <- frac_data %>%
@@ -149,7 +154,7 @@ construct_shift_share_iv_strict <- function(
     region_id, # region ID column in aid_data
     start_year = 2005, # start year for the analysis
     end_year = 2015 # end year for the analysis
-    ) {
+) {
     # Step 1: Define p_ji = avg(1(aid_ijt > 0)) over the specified time period
     pji <- aid_data %>%
         complete(

@@ -1,5 +1,3 @@
-setwd("C:/Users/eman7/Dropbox/GitHub/ra_work/Donor_fragmentation/")
-
 pacman::p_load(
   tidyverse,
   haven,
@@ -26,14 +24,22 @@ pacman::p_load(
 
 data_list <- list()
 
-files <- list.files(here("00_rawdata", "ab_raw_geo"), pattern = ".csv", full.names = TRUE, recursive = TRUE)
+files <- list.files(
+  here("00_rawdata", "ab_raw_geo"),
+  pattern = ".csv",
+  full.names = TRUE,
+  recursive = TRUE
+)
 
 
 # Read each CSV and append to the list
-data_list <- c(data_list, lapply(files, function(x) {
-  read_csv(x) %>%
-    mutate(wave = as.numeric(str_extract(x, "r(\\d+)", group = 1)))
-}))
+data_list <- c(
+  data_list,
+  lapply(files, function(x) {
+    read_csv(x) %>%
+      mutate(wave = as.numeric(str_extract(x, "r(\\d+)", group = 1)))
+  })
+)
 
 
 # Combine all dataframes into one
@@ -92,11 +98,18 @@ source(here("scripts", "utils", "afro_processing_utils.r"))
 afro_merged <- afro_merged %>%
   tidylog::mutate(
     # corruption should be reverse coded
-    corruption_rec = recode_four_point(corruption_local_government_councilors, reverse = TRUE),
+    corruption_rec = recode_four_point(
+      corruption_local_government_councilors,
+      reverse = TRUE
+    ),
     trust_rec = recode_four_point(trust_your_elected_local_government_council),
     contact_rec = recode_four_point(contact_local_government_councilor),
-    maintian_road_rec = recode_four_point(local_govt_handling_maintaining_roads),
-    maintian_market_rec = recode_four_point(local_govt_handling_maintaining_local_markets),
+    maintian_road_rec = recode_four_point(
+      local_govt_handling_maintaining_roads
+    ),
+    maintian_market_rec = recode_four_point(
+      local_govt_handling_maintaining_local_markets
+    ),
     preformance_rec = recode_four_point(performance_local_government_councilor),
     listen_rec = recode_four_point(local_government_councilors_listen)
   )
@@ -104,7 +117,8 @@ afro_merged <- afro_merged %>%
 # Descriptive
 descrips <- afro_merged %>%
   group_by(wave, country) %>%
-  summarise(across(ends_with("_rec"),
+  summarise(across(
+    ends_with("_rec"),
     list(
       mean = ~ mean(., na.rm = TRUE),
       missing_count = ~ sum(is.na(.))
@@ -117,10 +131,13 @@ descrips <- afro_merged %>%
 afro_merged <- as.data.table(afro_merged)
 
 # Calculate index
-afro_merged[, `:=`(
-  sub_gov_qual = rowSums(.SD, na.rm = TRUE) / rowSums(!is.na(.SD)),
-  non_miss = rowSums(!is.na(.SD))
-), .SDcols = patterns("_rec$")]
+afro_merged[,
+  `:=`(
+    sub_gov_qual = rowSums(.SD, na.rm = TRUE) / rowSums(!is.na(.SD)),
+    non_miss = rowSums(!is.na(.SD))
+  ),
+  .SDcols = patterns("_rec$")
+]
 
 # Rescale
 range_vals <- range(afro_merged$sub_gov_qual, na.rm = TRUE)
@@ -153,8 +170,14 @@ afro_merged <- as.data.table(afro_merged)
 
 # Calculate EA indices
 afro_merged[, `:=`(
-  ea_svc_index = rowSums(.SD[, .SD, .SDcols = patterns("^ea_svc.*_rec$")], na.rm = TRUE),
-  ea_fac_index = rowSums(.SD[, .SD, .SDcols = patterns("^ea_fac.*_rec$")], na.rm = TRUE),
+  ea_svc_index = rowSums(
+    .SD[, .SD, .SDcols = patterns("^ea_svc.*_rec$")],
+    na.rm = TRUE
+  ),
+  ea_fac_index = rowSums(
+    .SD[, .SD, .SDcols = patterns("^ea_fac.*_rec$")],
+    na.rm = TRUE
+  ),
   non_miss_ea = rowSums(!is.na(.SD[, .SD, .SDcols = patterns("^ea_.*_rec$")]))
 )]
 
@@ -188,44 +211,144 @@ table(afro_merged$country, afro_merged$country_code)
 # Create lookup tables for each wave
 wave3_countries <- setNames(
   c(
-    "Benin", "Botswana", "Cape Verde", "Ghana", "Kenya", "Lesotho", "Madagascar",
-    "Malawi", "Mali", "Mozambique", "Namibia", "Nigeria", "Senegal", "South Africa",
-    "Tanzania", "Uganda", "Zambia", "Zimbabwe"
-  ), 1:18
+    "Benin",
+    "Botswana",
+    "Cape Verde",
+    "Ghana",
+    "Kenya",
+    "Lesotho",
+    "Madagascar",
+    "Malawi",
+    "Mali",
+    "Mozambique",
+    "Namibia",
+    "Nigeria",
+    "Senegal",
+    "South Africa",
+    "Tanzania",
+    "Uganda",
+    "Zambia",
+    "Zimbabwe"
+  ),
+  1:18
 )
 
 wave4_countries <- setNames(
   c(
-    "Benin", "Botswana", "Burkina Faso", "Cape Verde", "Ghana", "Kenya", "Lesotho",
-    "Liberia", "Madagascar", "Malawi", "Mali", "Mozambique", "Namibia", "Nigeria",
-    "Senegal", "South Africa", "Tanzania", "Uganda", "Zambia", "Zimbabwe"
-  ), 1:20
+    "Benin",
+    "Botswana",
+    "Burkina Faso",
+    "Cape Verde",
+    "Ghana",
+    "Kenya",
+    "Lesotho",
+    "Liberia",
+    "Madagascar",
+    "Malawi",
+    "Mali",
+    "Mozambique",
+    "Namibia",
+    "Nigeria",
+    "Senegal",
+    "South Africa",
+    "Tanzania",
+    "Uganda",
+    "Zambia",
+    "Zimbabwe"
+  ),
+  1:20
 )
 
 wave5_countries <- setNames(
   c(
-    "Algeria", "Benin", "Botswana", "Burkina Faso", "Burundi", "Cameroon",
-    "Cape Verde", "Cote d'Ivoire", "Egypt", NA, "Ghana", "Guinea", "Kenya",
-    "Lesotho", "Liberia", "Madagascar", "Malawi", "Mali", "Mauritius", "Morocco",
-    "Mozambique", "Namibia", "Niger", "Nigeria", "Senegal", "Sierra Leone",
-    "South Africa", "Sudan", "Swaziland", "Tanzania", "Togo", "Tunisia",
-    "Uganda", "Zambia", "Zimbabwe"
-  ), 1:35
+    "Algeria",
+    "Benin",
+    "Botswana",
+    "Burkina Faso",
+    "Burundi",
+    "Cameroon",
+    "Cape Verde",
+    "Cote d'Ivoire",
+    "Egypt",
+    NA,
+    "Ghana",
+    "Guinea",
+    "Kenya",
+    "Lesotho",
+    "Liberia",
+    "Madagascar",
+    "Malawi",
+    "Mali",
+    "Mauritius",
+    "Morocco",
+    "Mozambique",
+    "Namibia",
+    "Niger",
+    "Nigeria",
+    "Senegal",
+    "Sierra Leone",
+    "South Africa",
+    "Sudan",
+    "Swaziland",
+    "Tanzania",
+    "Togo",
+    "Tunisia",
+    "Uganda",
+    "Zambia",
+    "Zimbabwe"
+  ),
+  1:35
 )
 
 wave6_countries <- setNames(
   c(
-    "Algeria", "Benin", "Botswana", "Burkina Faso", "Burundi", "Cameroon",
-    "Cape Verde", "Cote d'Ivoire", "Egypt", "Gabon", "Ghana", "Guinea", "Kenya",
-    "Lesotho", "Liberia", "Madagascar", "Malawi", "Mali", "Mauritius", "Morocco",
-    "Mozambique", "Namibia", "Niger", "Nigeria", "São Tomé and Príncipe",
-    "Senegal", "Sierra Leone", "South Africa", "Sudan", "Swaziland", "Tanzania",
-    "Togo", "Tunisia", "Uganda", "Zambia", "Zimbabwe"
-  ), 1:36
+    "Algeria",
+    "Benin",
+    "Botswana",
+    "Burkina Faso",
+    "Burundi",
+    "Cameroon",
+    "Cape Verde",
+    "Cote d'Ivoire",
+    "Egypt",
+    "Gabon",
+    "Ghana",
+    "Guinea",
+    "Kenya",
+    "Lesotho",
+    "Liberia",
+    "Madagascar",
+    "Malawi",
+    "Mali",
+    "Mauritius",
+    "Morocco",
+    "Mozambique",
+    "Namibia",
+    "Niger",
+    "Nigeria",
+    "São Tomé and Príncipe",
+    "Senegal",
+    "Sierra Leone",
+    "South Africa",
+    "Sudan",
+    "Swaziland",
+    "Tanzania",
+    "Togo",
+    "Tunisia",
+    "Uganda",
+    "Zambia",
+    "Zimbabwe"
+  ),
+  1:36
 )
 
 # Get country names for GADM
-gadm_countries <- unique(unlist(list(wave3_countries, wave4_countries, wave5_countries, wave6_countries)))
+gadm_countries <- unique(unlist(list(
+  wave3_countries,
+  wave4_countries,
+  wave5_countries,
+  wave6_countries
+)))
 gadm_countries <- gadm_countries[!is.na(gadm_countries)]
 
 # Create lookup for different country name variations
@@ -241,13 +364,19 @@ for (country in gadm_countries) {
   tryCatch(
     {
       # Use lookup table if needed
-      gadm_name <- ifelse(country %in% names(country_lookup),
+      gadm_name <- ifelse(
+        country %in% names(country_lookup),
         country_lookup[country],
         country
       )
 
       # Get GADM data
-      gadm_data <- gadm(country = gadm_name, level = 2, version = "3.6", path = "00_rawdata/shapefiles/")
+      gadm_data <- gadm(
+        country = gadm_name,
+        level = 2,
+        version = "3.6",
+        path = "00_rawdata/shapefiles/"
+      )
 
       # Convert to sf
       gadm_sf <- st_as_sf(gadm_data)
@@ -275,11 +404,7 @@ afro_sf <- st_join(afro_sf, sf::st_make_valid(gadm_combined)) %>%
 
 afro_merged <- afro_merged %>%
   distinct(respno, wave, .keep_all = TRUE) %>%
-  left_join(.,
-    afro_sf,
-    by = c("respno", "wave")
-  )
-
+  left_join(., afro_sf, by = c("respno", "wave"))
 
 
 # Ad-hoc fix for Tanzania and Swaziland
@@ -349,7 +474,6 @@ if ("dateintr" %in% colnames(afro_merged)) {
       )
     )
 
-
   # Check the results
   year_summary <- afro_merged %>%
     group_by(wave) %>%
@@ -371,15 +495,31 @@ afro_fin <- afro_merged %>%
   # Ensure `remove` is a data frame
   anti_join(as.data.frame(remove)) %>%
   # Grab the columns of interest
-  select(respno,
-    country = COUNTRY, wave, dateintr, year, latitude, longitude,
+  select(
+    respno,
+    country = COUNTRY,
+    wave,
+    dateintr,
+    year,
+    latitude,
+    longitude,
     starts_with("GID_"),
-    sub_gov_qual, non_miss, sgqi,
-    ea_svc_index, ea_fac_index, non_miss_ea,
+    sub_gov_qual,
+    non_miss,
+    sgqi,
+    ea_svc_index,
+    ea_fac_index,
+    non_miss_ea,
     ends_with("_rec")
   )
 
-write_csv(afro_fin, paste0(here("00_rawdata", "ab_raw", "processed"), "/afrobarometer_w3_w6_geomerged_new.csv"))
+write_csv(
+  afro_fin,
+  paste0(
+    here("00_rawdata", "ab_raw", "processed"),
+    "/afrobarometer_w3_w6_geomerged_new.csv"
+  )
+)
 
 
 ###### create panel to match ########
@@ -408,6 +548,12 @@ summary(admin1_afro$mean_sgq_admin1, na.rm = TRUE)
 summary(admin2_afro$mean_sgq_admin2, na.rm = TRUE)
 
 # Admin1
-write_csv(admin1_afro, paste0(here("00_rawdata", "ab_raw", "processed"), "/admin1_afro_panel.csv"))
+write_csv(
+  admin1_afro,
+  here("00_rawdata", "ab_raw", "processed", "admin1_afro_panel.csv")
+)
 # Admin2
-write_csv(admin2_afro, paste0(here("00_rawdata", "ab_raw", "processed"), "/admin2_afro_panel.csv"))
+write_csv(
+  admin2_afro,
+  here("00_rawdata", "ab_raw", "processed", "admin2_afro_panel.csv")
+)
