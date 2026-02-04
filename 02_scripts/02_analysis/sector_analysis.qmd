@@ -1,0 +1,474 @@
+---
+title: "By sector analysis"
+author: "Ethan Sager"
+format: html
+---
+
+```{r setup}
+if (!require("pacman")) {
+    install.packages("pacman")
+}
+pacman::p_load(
+    tidyverse,
+    readr,
+    janitor,
+    sjmisc,
+    plm,
+    marginaleffects,
+    gtsummary,
+    car,
+    stargazer,
+    broom,
+    fixest,
+    did,
+    interflex
+)
+
+options(scipen = 999)
+
+panel_aid_admin1 <- read_csv(
+    here::here("01_panel_data", "panel_aid_admin1_by_sector.csv")
+)
+panel_aid_admin2 <- read_csv(
+    here::here("01_panel_data", "panel_aid_admin2_by_sector.csv")
+)
+
+# Ensure proper ordering before applying lag()
+panel_aid_admin1 <- panel_aid_admin1 %>%
+    arrange(GID_1, year) %>%
+    group_by(GID_1) %>%
+    mutate(
+        lag_mean_nl = dplyr::lag(mean_nl),
+        nl_growth = case_when(
+            is.na(lag_mean_nl) ~ NA_real_,
+            TRUE ~
+                ((log(mean_nl + 0.01) - log(lag_mean_nl + 0.01)) /
+                    log(lag_mean_nl + 0.01)) *
+                    100
+        ),
+        lag_hhi_admin1 = dplyr::lag(frag_index_admin1),
+        lag2_hhi_admin1 = dplyr::lag(frag_index_admin1, 2),
+        lag3_hhi_admin1 = dplyr::lag(frag_index_admin1, 3),
+        lag_pop_admin1 = dplyr::lag(ln_pop_admin1),
+        lag_sgq_admin1 = dplyr::lag(mean_sgq_admin1),
+        lag_donor_count_admin1 = dplyr::lag(donor_count_admin1),
+        lag_total_proj_admin1 = dplyr::lag(total_proj_admin1),
+        lag_total_aid_admin1 = log(dplyr::lag(total_aid_admin1) + .01)
+    ) %>%
+    mutate(
+        nl_growth = case_when(
+            is.infinite(nl_growth) ~ NA_real_,
+            nl_growth > quantile(nl_growth, probs = .05, na.rm = TRUE) ~ NA_real_,
+            nl_growth < quantile(nl_growth, probs = .95, na.rm = TRUE) ~ NA_real_,
+            TRUE ~ nl_growth
+        )
+    ) %>%
+    ungroup()
+
+panel_aid_admin2 <- panel_aid_admin2 %>%
+    arrange(GID_2, year) %>%
+    group_by(GID_2) %>%
+    mutate(
+        lag_mean_nl = dplyr::lag(mean_nl),
+        nl_growth = case_when(
+            is.na(lag_mean_nl) ~ NA_real_,
+            TRUE ~
+                ((log(mean_nl + 0.01) - log(lag_mean_nl + 0.01)) /
+                    log(lag_mean_nl + 0.01)) *
+                    100
+        ),
+        lag_hhi_admin2 = dplyr::lag(frag_index_admin2),
+        lag2_hhi_admin2 = dplyr::lag(frag_index_admin2, 2),
+        lag3_hhi_admin2 = dplyr::lag(frag_index_admin2, 3),
+        lag_pop_admin2 = dplyr::lag(ln_pop_admin2),
+        lag_sgq_admin2 = dplyr::lag(mean_sgq_admin2),
+        lag_donor_count_admin2 = dplyr::lag(donor_count_admin2),
+        lag_total_proj_admin2 = dplyr::lag(total_proj_admin2),
+        lag_total_aid_admin2 = log(dplyr::lag(total_aid_admin2) + .01)
+    ) %>%
+    mutate(
+        nl_growth = case_when(
+            is.infinite(nl_growth) ~ NA_real_,
+            nl_growth > quantile(nl_growth, probs = .05, na.rm = TRUE) ~ NA_real_,
+            nl_growth < quantile(nl_growth, probs = .95, na.rm = TRUE) ~ NA_real_,
+            TRUE ~ nl_growth
+        )
+    ) %>%
+    ungroup()
+
+# Split the sample into high and low SGQ
+panel_aid_admin1 <- panel_aid_admin1 %>%
+    mutate(
+        med_sgq_admin1 = if_else(
+            lag_sgq_admin1 > quantile(lag_sgq_admin1, 0.75, na.rm = TRUE),
+            1,
+            0
+        )
+    )
+
+panel_aid_admin2 <- panel_aid_admin2 %>%
+    mutate(
+        med_sgq_admin2 = if_else(
+            lag_sgq_admin2 > quantile(lag_sgq_admin2, 0.75, na.rm = TRUE),
+            1,
+            0
+        )
+    )
+
+high_admin1 <- panel_aid_admin1 %>%
+    filter(med_sgq_admin1 == 1)
+
+low_admin1 <- panel_aid_admin1 %>%
+    filter(med_sgq_admin1 == 0)
+
+high_admin2 <- panel_aid_admin2 %>%
+    filter(med_sgq_admin2 == 1)
+
+low_admin2 <- panel_aid_admin2 %>%
+    filter(med_sgq_admin2 == 0)
+
+
+prepare_fe_data <- function(
+    data,
+    admin_level,
+    sector_var) {
+    if (admin_level == "GID_1") {
+        data <- data %>%
+            dplyr::mutate(
+                total_aid = total_aid_admin1,
+                frag_index = lag_hhi_admin1,
+                frag_l1 = lag_hhi_admin1,
+                frag_l2 = lag2_hhi_admin1,
+                frag_l3 = lag3_hhi_admin1,
+                lag_log_pop = lag_pop_admin1,
+                lag_governance = lag_sgq_admin1,
+                lag_donor_count = lag_donor_count_admin1,
+                lag_total_proj = lag_total_proj_admin1,
+                lag_total_aid = lag_total_aid_admin1
+            ) %>%
+            filter(study_group == sector_var)
+    } else if (admin_level == "GID_2") {
+        data <- data %>%
+            dplyr::mutate(
+                total_aid = total_aid_admin2,
+                frag_index = lag_hhi_admin2,
+                frag_l1 = lag_hhi_admin2,
+                frag_l2 = lag2_hhi_admin2,
+                frag_l3 = lag3_hhi_admin2,
+                lag_log_pop = lag_pop_admin2,
+                lag_governance = lag_sgq_admin2,
+                lag_donor_count = lag_donor_count_admin2,
+                lag_total_proj = lag_total_proj_admin2,
+                lag_total_aid = lag_total_aid_admin2
+            ) %>%
+            filter(study_group == sector_var)
+    }
+
+    data <- data %>%
+        dplyr::mutate(
+            high_gov = if_else(
+                lag_governance > quantile(lag_governance, 0.75, na.rm = TRUE),
+                1,
+                0
+            )
+        )
+
+    return(data)
+}
+
+
+```
+
+
+
+```{r main_res}
+perform_stratified_fe_analysis <- function(
+    data,
+    admin_level,
+    outcome_var,
+    cluster_var,
+    sector_var) {
+    data <- prepare_fe_data(data, admin_level, sector_var)
+
+    stage_2_formula <- as.formula(
+        paste0(
+            outcome_var,
+            " ~ lag_total_aid + lag_total_proj + lag_donor_count + lag_log_pop | GID_0^year + ",
+            admin_level
+        )
+    )
+
+    stage_2 <- fixest::feols(
+        stage_2_formula,
+        cluster = cluster_var,
+        data = data
+    )
+
+    return(stage_2)
+}
+
+run_interaction_fe <- function(
+    data,
+    admin_level,
+    outcome_var,
+    cluster_var,
+    sector_var,
+    gov_spec = c("continuous", "binary")) {
+    gov_spec <- match.arg(gov_spec)
+    data <- prepare_fe_data(data, admin_level, sector_var)
+
+    rhs_terms <- if (gov_spec == "continuous") {
+        "frag_index * lag_governance + lag_total_aid + lag_log_pop"
+    } else {
+        "frag_index * high_gov + lag_total_aid + lag_log_pop"
+    }
+
+    model_formula <- as.formula(
+        paste0(
+            outcome_var,
+            " ~ ",
+            rhs_terms,
+            " | GID_0^year + ",
+            admin_level
+        )
+    )
+
+    model <- fixest::feols(
+        model_formula,
+        cluster = cluster_var,
+        data = data
+    )
+
+    return(model)
+}
+
+run_distributed_lag_interaction_fe <- function(
+    data,
+    admin_level,
+    outcome_var,
+    cluster_var,
+    sector_var,
+    gov_spec = c("continuous", "binary")) {
+    gov_spec <- match.arg(gov_spec)
+    data <- prepare_fe_data(data, admin_level, sector_var)
+
+    rhs_terms <- if (gov_spec == "continuous") {
+        paste(
+            "frag_l1 + frag_l2 + frag_l3 + lag_governance +",
+            "frag_l1:lag_governance + frag_l2:lag_governance +",
+            "frag_l3:lag_governance + lag_total_aid + lag_log_pop"
+        )
+    } else {
+        paste(
+            "frag_l1 + frag_l2 + frag_l3 + high_gov +",
+            "frag_l1:high_gov + frag_l2:high_gov + frag_l3:high_gov +",
+            "lag_total_aid + lag_log_pop"
+        )
+    }
+
+    model_formula <- as.formula(
+        paste0(
+            outcome_var,
+            " ~ ",
+            rhs_terms,
+            " | GID_0^year + ",
+            admin_level
+        )
+    )
+
+    model <- fixest::feols(
+        model_formula,
+        cluster = cluster_var,
+        data = data
+    )
+
+    return(model)
+}
+
+
+# Stratified models
+high_1_health <- perform_stratified_fe_analysis(
+    high_admin1,
+    "GID_1",
+    "u5m",
+    "GID_0",
+    "health"
+)
+low_1_health <- perform_stratified_fe_analysis(
+    low_admin1,
+    "GID_1",
+    "u5m",
+    "GID_0",
+    "health"
+)
+
+high_2_health <- perform_stratified_fe_analysis(
+    high_admin2,
+    "GID_2",
+    "u5m",
+    "GID_0",
+    "health"
+)
+low_2_health <- perform_stratified_fe_analysis(
+    low_admin2,
+    "GID_2",
+    "u5m",
+    "GID_0",
+    "health"
+)
+
+etable(
+    high_1_health,
+    low_1_health,
+    high_2_health,
+    low_2_health,
+    headers = c(
+        "High Admin1 (Health)",
+        "Low Admin1 (Health)",
+        "High Admin2 (Health)",
+        "Low Admin2 (Health)"
+    ),
+    dict = c(
+        lag_donor_count = "Lag Donor Count",
+        lag_total_proj = "Lag Total Projects",
+        lag_log_pop = "Lag LN(Population)",
+        `lag_donor_count:lag_total_proj` = "Lag Donor × Lag Projects",
+        lag_total_aid = "Lag LN(Total Aid)"
+    ),
+    se.below = TRUE,
+    signif.code = c("***" = 0.01, "**" = 0.05, "*" = 0.1), # <-- proper format
+    fitstat = c("n", "r2")
+)
+
+# Interaction models (preferred for testing moderation)
+educ_interaction_cont <- run_interaction_fe(
+    panel_aid_admin1,
+    "GID_1",
+    "u5m",
+    "GID_0",
+    "educ",
+    "continuous"
+)
+
+health_interaction_cont <- run_interaction_fe(
+    panel_aid_admin1,
+    "GID_1",
+    "u5m",
+    "GID_0",
+    "health",
+    "continuous"
+)
+
+educ_interaction_binary <- run_interaction_fe(
+    panel_aid_admin1,
+    "GID_1",
+    "u5m",
+    "GID_0",
+    "educ",
+    "binary"
+)
+
+health_interaction_binary <- run_interaction_fe(
+    panel_aid_admin1,
+    "GID_1",
+    "u5m",
+    "GID_0",
+    "health",
+    "binary"
+)
+
+etable(
+    educ_interaction_cont,
+    health_interaction_cont,
+    educ_interaction_binary,
+    health_interaction_binary,
+    headers = c(
+        "Educ: Frag × Lag SGQ",
+        "Health: Frag × Lag SGQ",
+        "Educ: Frag × High SGQ",
+        "Health: Frag × High SGQ"
+    ),
+    dict = c(
+        frag_index = "Lag Fragmentation",
+        lag_governance = "Lag SGQ",
+        high_gov = "High SGQ (Lag, Median Split)",
+        `frag_index:lag_governance` = "Lag Fragmentation × Lag SGQ",
+        `frag_index:high_gov` = "Lag Fragmentation × High SGQ",
+        lag_log_pop = "Lag LN(Population)",
+        lag_total_aid = "Lag LN(Total Aid)"
+    ),
+    se.below = TRUE,
+    signif.code = c("***" = 0.01, "**" = 0.05, "*" = 0.1),
+    fitstat = c("n", "r2")
+)
+
+
+
+# Distributed-lag moderation models (t-1 to t-3)
+educ_dl_cont <- run_distributed_lag_interaction_fe(
+    panel_aid_admin1,
+    "GID_1",
+    "u5m",
+    "GID_0",
+    "educ",
+    "continuous"
+)
+
+health_dl_cont <- run_distributed_lag_interaction_fe(
+    panel_aid_admin1,
+    "GID_1",
+    "u5m",
+    "GID_0",
+    "health",
+    "continuous"
+)
+
+educ_dl_binary <- run_distributed_lag_interaction_fe(
+    panel_aid_admin1,
+    "GID_1",
+    "u5m",
+    "GID_0",
+    "educ",
+    "binary"
+)
+
+health_dl_binary <- run_distributed_lag_interaction_fe(
+    panel_aid_admin1,
+    "GID_1",
+    "u5m",
+    "GID_0",
+    "health",
+    "binary"
+)
+
+etable(
+    educ_dl_cont,
+    health_dl_cont,
+    educ_dl_binary,
+    health_dl_binary,
+    headers = c(
+        "DL Educ: Frag(1:3) × Lag SGQ",
+        "DL Health: Frag(1:3) × Lag SGQ",
+        "DL Educ: Frag(1:3) × High SGQ",
+        "DL Health: Frag(1:3) × High SGQ"
+    ),
+    dict = c(
+        frag_l1 = "Lag 1 Fragmentation",
+        frag_l2 = "Lag 2 Fragmentation",
+        frag_l3 = "Lag 3 Fragmentation",
+        lag_governance = "Lag SGQ",
+        high_gov = "High SGQ (Lag, Median Split)",
+        `frag_l1:lag_governance` = "Lag 1 Frag × Lag SGQ",
+        `frag_l2:lag_governance` = "Lag 2 Frag × Lag SGQ",
+        `frag_l3:lag_governance` = "Lag 3 Frag × Lag SGQ",
+        `frag_l1:high_gov` = "Lag 1 Frag × High SGQ",
+        `frag_l2:high_gov` = "Lag 2 Frag × High SGQ",
+        `frag_l3:high_gov` = "Lag 3 Frag × High SGQ",
+        lag_log_pop = "Lag LN(Population)",
+        lag_total_aid = "Lag LN(Total Aid)"
+    ),
+    se.below = TRUE,
+    signif.code = c("***" = 0.01, "**" = 0.05, "*" = 0.1),
+    fitstat = c("n", "r2")
+)
+```

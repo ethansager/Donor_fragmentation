@@ -1,0 +1,647 @@
+---
+title: "Aid-Type Regressions: Growth and Health U5M"
+author: "Ethan Sager"
+format: pdf
+header-includes:
+    - \usepackage{pdflscape}
+execute:
+  echo: false
+  message: false
+  warning: false
+code-fold: true
+---
+
+```{r setup}
+if (!requireNamespace("pacman", quietly = TRUE)) {
+    install.packages("pacman")
+}
+
+pacman::p_load(
+    tidyverse,
+    here,
+    readr,
+    fixest
+)
+
+options(scipen = 999)
+
+output_dir <- here::here("03_output", "tabs")
+dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
+
+panel_aid_admin1 <- readr::read_csv(
+    here::here("01_panel_data", "panel_aid_admin1_by_sector.csv"),
+    show_col_types = FALSE
+)
+panel_aid_admin2 <- readr::read_csv(
+    here::here("01_panel_data", "panel_aid_admin2_by_sector.csv"),
+    show_col_types = FALSE
+)
+
+panel_aid_admin1_fin <- readr::read_csv(
+    here::here("01_panel_data", "panel_aid_admin1_fin.csv"),
+    show_col_types = FALSE
+)
+panel_aid_admin2_fin <- readr::read_csv(
+    here::here("01_panel_data", "panel_aid_admin2_fin.csv"),
+    show_col_types = FALSE
+)
+
+attach_iv <- function(sector_data, fin_data, key_cols) {
+    sector_data %>%
+        left_join(
+            fin_data %>%
+                select(all_of(c(key_cols, "IV_lag"))) %>%
+                distinct(),
+            by = key_cols
+        )
+}
+
+prepare_panel_data <- function(data, admin_level) {
+    if (admin_level == "GID_1") {
+        data <- data %>%
+            arrange(GID_1, study_group, year) %>%
+            group_by(GID_1, study_group) %>%
+            mutate(
+                lag_mean_nl = dplyr::lag(mean_nl),
+                nl_growth = case_when(
+                    is.na(lag_mean_nl) ~ NA_real_,
+                    TRUE ~
+                        ((log(mean_nl + 0.01) - log(lag_mean_nl + 0.01)) /
+                            log(lag_mean_nl + 0.01)) * 100
+                ),
+                lag_hhi_admin1 = dplyr::lag(frag_index_admin1),
+                lag_pop_admin1 = dplyr::lag(ln_pop_admin1),
+                lag_sgq_admin1 = dplyr::lag(mean_sgq_admin1),
+                lag_donor_count_admin1 = dplyr::lag(donor_count_admin1),
+                lag_total_proj_admin1 = dplyr::lag(total_proj_admin1),
+                lag_total_aid_admin1 = log(dplyr::lag(total_aid_admin1) + 0.01)
+            ) %>%
+            ungroup()
+    } else if (admin_level == "GID_2") {
+        data <- data %>%
+            arrange(GID_2, study_group, year) %>%
+            group_by(GID_2, study_group) %>%
+            mutate(
+                lag_mean_nl = dplyr::lag(mean_nl),
+                nl_growth = case_when(
+                    is.na(lag_mean_nl) ~ NA_real_,
+                    TRUE ~
+                        ((log(mean_nl + 0.01) - log(lag_mean_nl + 0.01)) /
+                            log(lag_mean_nl + 0.01)) * 100
+                ),
+                lag_hhi_admin2 = dplyr::lag(frag_index_admin2),
+                lag_pop_admin2 = dplyr::lag(ln_pop_admin2),
+                lag_sgq_admin2 = dplyr::lag(mean_sgq_admin2),
+                lag_donor_count_admin2 = dplyr::lag(donor_count_admin2),
+                lag_total_proj_admin2 = dplyr::lag(total_proj_admin2),
+                lag_total_aid_admin2 = log(dplyr::lag(total_aid_admin2) + 0.01)
+            ) %>%
+            ungroup()
+    } else {
+        stop("admin_level must be either 'GID_1' or 'GID_2'")
+    }
+
+    data
+}
+
+harmonize_by_admin <- function(data, admin_level) {
+    if (admin_level == "GID_1") {
+        data <- data %>%
+            mutate(
+                total_aid = total_aid_admin1,
+                frag_index = lag_hhi_admin1,
+                lag_log_pop = lag_pop_admin1,
+                lag_governance = lag_sgq_admin1,
+                lag_donor_count = lag_donor_count_admin1,
+                lag_total_proj = lag_total_proj_admin1,
+                lag_total_aid = lag_total_aid_admin1
+            )
+    } else if (admin_level == "GID_2") {
+        data <- data %>%
+            mutate(
+                total_aid = total_aid_admin2,
+                frag_index = lag_hhi_admin2,
+                lag_log_pop = lag_pop_admin2,
+                lag_governance = lag_sgq_admin2,
+                lag_donor_count = lag_donor_count_admin2,
+                lag_total_proj = lag_total_proj_admin2,
+                lag_total_aid = lag_total_aid_admin2
+            )
+    } else {
+        stop("admin_level must be either 'GID_1' or 'GID_2'")
+    }
+
+    data
+}
+
+mark_governance_groups <- function(data, admin_level, high_cutoff = 0.75) {
+    data <- harmonize_by_admin(data, admin_level)
+    cutoff <- quantile(data$lag_governance, probs = high_cutoff, na.rm = TRUE)
+
+    data %>%
+        mutate(
+            high_gov = if_else(
+                !is.na(lag_governance) & lag_governance > cutoff,
+                1L,
+                0L,
+                missing = 0L
+            ),
+            gov_group = if_else(high_gov == 1L, "high", "low")
+        )
+}
+
+clean_outcome <- function(data, outcome_var) {
+    data <- data %>%
+        filter(!is.na(.data[[outcome_var]]), is.finite(.data[[outcome_var]]))
+
+    if (outcome_var == "nl_growth" && nrow(data) > 0) {
+        growth_cut <- quantile(data[[outcome_var]], probs = c(0.05, 0.95), na.rm = TRUE)
+        data <- data %>%
+            filter(
+                .data[[outcome_var]] > growth_cut[[1]],
+                .data[[outcome_var]] < growth_cut[[2]]
+            )
+    }
+
+    data
+}
+
+center_governance_median <- function(data) {
+    gov_median <- median(data$lag_governance, na.rm = TRUE)
+    if (!is.finite(gov_median)) {
+        gov_median <- 0
+    }
+
+    data %>%
+        mutate(
+            lag_governance_c = lag_governance - gov_median
+        )
+}
+
+perform_ols_analysis <- function(data, admin_level, outcome_var, cluster_var) {
+    data <- harmonize_by_admin(data, admin_level) %>%
+        clean_outcome(outcome_var)
+
+    model_formula <- as.formula(
+        paste0(outcome_var, " ~ frag_index + lag_total_aid + lag_log_pop")
+    )
+
+    fixest::feols(
+        model_formula,
+        cluster = as.formula(paste0("~", cluster_var)),
+        data = data
+    )
+}
+
+perform_fe_analysis <- function(data, admin_level, outcome_var, cluster_var) {
+    data <- harmonize_by_admin(data, admin_level) %>%
+        clean_outcome(outcome_var)
+
+    model_formula <- as.formula(
+        paste0(
+            outcome_var,
+            " ~ frag_index + lag_total_aid + lag_log_pop | GID_0^year + ",
+            admin_level
+        )
+    )
+
+    fixest::feols(
+        model_formula,
+        cluster = as.formula(paste0("~", cluster_var)),
+        data = data
+    )
+}
+
+perform_cfa_analysis <- function(data, admin_level, outcome_var, iv_var, cluster_var) {
+    data <- harmonize_by_admin(data, admin_level) %>%
+        clean_outcome(outcome_var)
+
+    stage_1_formula <- as.formula(
+        paste0(
+            "total_aid ~ ",
+            iv_var,
+            " + lag_log_pop | GID_0^year + ",
+            admin_level
+        )
+    )
+
+    stage_1 <- fixest::feols(
+        stage_1_formula,
+        cluster = as.formula(paste0("~", cluster_var)),
+        data = data
+    )
+
+    data <- data %>%
+        mutate(cfa = total_aid - predict(stage_1, newdata = data))
+
+    stage_2_formula <- as.formula(
+        paste0(
+            outcome_var,
+            " ~ frag_index + lag_total_aid + lag_log_pop + cfa | GID_0^year + ",
+            admin_level
+        )
+    )
+
+    fixest::feols(
+        stage_2_formula,
+        cluster = as.formula(paste0("~", cluster_var)),
+        data = data
+    )
+}
+
+perform_interaction_ols_analysis <- function(data, admin_level, outcome_var, cluster_var) {
+    data <- harmonize_by_admin(data, admin_level) %>%
+        clean_outcome(outcome_var) %>%
+        center_governance_median()
+
+    model_formula <- as.formula(
+        paste0(
+            outcome_var,
+            " ~ frag_index * lag_governance_c + lag_total_aid + lag_log_pop"
+        )
+    )
+
+    fixest::feols(
+        model_formula,
+        cluster = as.formula(paste0("~", cluster_var)),
+        data = data
+    )
+}
+
+perform_interaction_fe_analysis <- function(data, admin_level, outcome_var, cluster_var) {
+    data <- harmonize_by_admin(data, admin_level) %>%
+        clean_outcome(outcome_var) %>%
+        center_governance_median()
+
+    model_formula <- as.formula(
+        paste0(
+            outcome_var,
+            " ~ frag_index * lag_governance_c + lag_total_aid + lag_log_pop | GID_0^year + ",
+            admin_level
+        )
+    )
+
+    fixest::feols(
+        model_formula,
+        cluster = as.formula(paste0("~", cluster_var)),
+        data = data
+    )
+}
+
+run_models_by_aid_type <- function(data, aid_types, model_runner) {
+    results <- list()
+
+    for (aid_type in aid_types) {
+        aid_data <- data %>% filter(study_group == aid_type)
+
+        fit <- tryCatch(
+            model_runner(aid_data),
+            error = function(e) {
+                message(paste0("Skipped ", aid_type, ": ", e$message))
+                NULL
+            }
+        )
+
+        if (!is.null(fit)) {
+            results[[aid_type]] <- fit
+        }
+    }
+
+    results
+}
+
+build_dict <- function(include_cfa = FALSE, include_interaction = FALSE) {
+    model_dict <- c(
+        frag_index = "Lag Fragmentation",
+        lag_total_aid = "Lag LN(Total Aid)",
+        lag_log_pop = "Lag LN(Population)"
+    )
+
+    if (include_interaction) {
+        model_dict <- c(
+            model_dict,
+            lag_governance_c = "Lag Governance (Median-Centered)",
+            `frag_index:lag_governance_c` = "Lag Fragmentation x Lag Governance (Median-Centered)"
+        )
+    }
+
+    if (include_cfa) {
+        model_dict <- c(model_dict, cfa = "CFA Residual")
+    }
+
+    model_dict
+}
+
+save_and_show_table <- function(
+    model_list,
+    file_name,
+    include_cfa = FALSE,
+    include_interaction = FALSE,
+    headers = NULL,
+    landscape = NULL,
+    table_title = NULL) {
+    if (length(model_list) == 0) {
+        return(invisible(NULL))
+    }
+
+    if (is.null(headers)) {
+        headers <- names(model_list)
+    }
+
+    if (is.null(landscape)) {
+        landscape <- length(model_list) > 4
+    }
+
+    base_args <- c(
+        model_list,
+        list(
+            headers = headers,
+            dict = build_dict(include_cfa, include_interaction),
+            digits = 4,
+            placement = "H",
+            se.below = TRUE,
+            signif.code = c("***" = 0.01, "**" = 0.05, "*" = 0.1),
+            fitstat = c("n", "r2")
+        )
+    )
+
+    if (!is.null(table_title)) {
+        base_args <- c(base_args, list(title = table_title))
+    }
+
+    do.call(
+        fixest::etable,
+        c(base_args, list(tex = TRUE, file = here::here("03_output", "tabs", file_name)))
+    )
+
+    latex_table <- do.call(fixest::etable, c(base_args, list(tex = TRUE)))
+
+    if (isTRUE(landscape)) {
+        cat("\\begin{landscape}\n")
+        cat(latex_table, sep = "\n")
+        cat("\n")
+        cat("\\end{landscape}\n\n")
+    } else {
+        cat(latex_table, sep = "\n")
+        cat("\n\n")
+    }
+
+    invisible(latex_table)
+}
+
+panel_aid_admin1 <- attach_iv(
+    panel_aid_admin1,
+    panel_aid_admin1_fin,
+    c("GID_0", "GID_1", "year")
+) %>%
+    prepare_panel_data("GID_1") %>%
+    mark_governance_groups("GID_1")
+
+panel_aid_admin2 <- attach_iv(
+    panel_aid_admin2,
+    panel_aid_admin2_fin,
+    c("GID_0", "GID_1", "GID_2", "year")
+) %>%
+    prepare_panel_data("GID_2") %>%
+    mark_governance_groups("GID_2")
+
+aid_types <- sort(unique(panel_aid_admin1$study_group))
+```
+
+## 1) Split sample: high vs low governance, by aid type (growth)
+
+```{r split_growth, results='asis'}
+high_admin1 <- panel_aid_admin1 %>% filter(high_gov == 1L)
+low_admin1 <- panel_aid_admin1 %>% filter(high_gov == 0L)
+high_admin2 <- panel_aid_admin2 %>% filter(high_gov == 1L)
+low_admin2 <- panel_aid_admin2 %>% filter(high_gov == 0L)
+
+# OLS
+ols_high_admin1 <- run_models_by_aid_type(
+    high_admin1, aid_types,
+    function(df) perform_ols_analysis(df, "GID_1", "nl_growth", "GID_0")
+)
+ols_low_admin1 <- run_models_by_aid_type(
+    low_admin1, aid_types,
+    function(df) perform_ols_analysis(df, "GID_1", "nl_growth", "GID_0")
+)
+ols_high_admin2 <- run_models_by_aid_type(
+    high_admin2, aid_types,
+    function(df) perform_ols_analysis(df, "GID_2", "nl_growth", "GID_0")
+)
+ols_low_admin2 <- run_models_by_aid_type(
+    low_admin2, aid_types,
+    function(df) perform_ols_analysis(df, "GID_2", "nl_growth", "GID_0")
+)
+
+save_and_show_table(
+    ols_high_admin1,
+    "aidtype_ols_growth_admin1_highgov.tex",
+    table_title = "Table 1A. OLS Growth Models by Aid Type: Admin1, High Governance"
+)
+save_and_show_table(
+    ols_low_admin1,
+    "aidtype_ols_growth_admin1_lowgov.tex",
+    table_title = "Table 1B. OLS Growth Models by Aid Type: Admin1, Low Governance"
+)
+save_and_show_table(
+    ols_high_admin2,
+    "aidtype_ols_growth_admin2_highgov.tex",
+    table_title = "Table 1C. OLS Growth Models by Aid Type: Admin2, High Governance"
+)
+save_and_show_table(
+    ols_low_admin2,
+    "aidtype_ols_growth_admin2_lowgov.tex",
+    table_title = "Table 1D. OLS Growth Models by Aid Type: Admin2, Low Governance"
+)
+
+# FE
+fe_high_admin1 <- run_models_by_aid_type(
+    high_admin1, aid_types,
+    function(df) perform_fe_analysis(df, "GID_1", "nl_growth", "GID_0")
+)
+fe_low_admin1 <- run_models_by_aid_type(
+    low_admin1, aid_types,
+    function(df) perform_fe_analysis(df, "GID_1", "nl_growth", "GID_0")
+)
+fe_high_admin2 <- run_models_by_aid_type(
+    high_admin2, aid_types,
+    function(df) perform_fe_analysis(df, "GID_2", "nl_growth", "GID_0")
+)
+fe_low_admin2 <- run_models_by_aid_type(
+    low_admin2, aid_types,
+    function(df) perform_fe_analysis(df, "GID_2", "nl_growth", "GID_0")
+)
+
+save_and_show_table(
+    fe_high_admin1,
+    "aidtype_fe_growth_admin1_highgov.tex",
+    table_title = "Table 2A. FE Growth Models by Aid Type: Admin1, High Governance"
+)
+save_and_show_table(
+    fe_low_admin1,
+    "aidtype_fe_growth_admin1_lowgov.tex",
+    table_title = "Table 2B. FE Growth Models by Aid Type: Admin1, Low Governance"
+)
+save_and_show_table(
+    fe_high_admin2,
+    "aidtype_fe_growth_admin2_highgov.tex",
+    table_title = "Table 2C. FE Growth Models by Aid Type: Admin2, High Governance"
+)
+save_and_show_table(
+    fe_low_admin2,
+    "aidtype_fe_growth_admin2_lowgov.tex",
+    table_title = "Table 2D. FE Growth Models by Aid Type: Admin2, Low Governance"
+)
+
+# Control function
+cfa_high_admin1 <- run_models_by_aid_type(
+    high_admin1, aid_types,
+    function(df) perform_cfa_analysis(df, "GID_1", "nl_growth", "IV_lag", "GID_0")
+)
+cfa_low_admin1 <- run_models_by_aid_type(
+    low_admin1, aid_types,
+    function(df) perform_cfa_analysis(df, "GID_1", "nl_growth", "IV_lag", "GID_0")
+)
+cfa_high_admin2 <- run_models_by_aid_type(
+    high_admin2, aid_types,
+    function(df) perform_cfa_analysis(df, "GID_2", "nl_growth", "IV_lag", "GID_0")
+)
+cfa_low_admin2 <- run_models_by_aid_type(
+    low_admin2, aid_types,
+    function(df) perform_cfa_analysis(df, "GID_2", "nl_growth", "IV_lag", "GID_0")
+)
+
+save_and_show_table(
+    cfa_high_admin1,
+    "aidtype_cfa_growth_admin1_highgov.tex",
+    include_cfa = TRUE,
+    table_title = "Table 3A. CFA Growth Models by Aid Type: Admin1, High Governance"
+)
+save_and_show_table(
+    cfa_low_admin1,
+    "aidtype_cfa_growth_admin1_lowgov.tex",
+    include_cfa = TRUE,
+    table_title = "Table 3B. CFA Growth Models by Aid Type: Admin1, Low Governance"
+)
+save_and_show_table(
+    cfa_high_admin2,
+    "aidtype_cfa_growth_admin2_highgov.tex",
+    include_cfa = TRUE,
+    table_title = "Table 3C. CFA Growth Models by Aid Type: Admin2, High Governance"
+)
+save_and_show_table(
+    cfa_low_admin2,
+    "aidtype_cfa_growth_admin2_lowgov.tex",
+    include_cfa = TRUE,
+    table_title = "Table 3D. CFA Growth Models by Aid Type: Admin2, Low Governance"
+)
+```
+
+## 2) Interaction models with governance quality, by aid type (growth)
+
+```{r interaction_growth, results='asis'}
+interaction_ols_admin1 <- run_models_by_aid_type(
+    panel_aid_admin1, aid_types,
+    function(df) perform_interaction_ols_analysis(df, "GID_1", "nl_growth", "GID_0")
+)
+interaction_ols_admin2 <- run_models_by_aid_type(
+    panel_aid_admin2, aid_types,
+    function(df) perform_interaction_ols_analysis(df, "GID_2", "nl_growth", "GID_0")
+)
+interaction_fe_admin1 <- run_models_by_aid_type(
+    panel_aid_admin1, aid_types,
+    function(df) perform_interaction_fe_analysis(df, "GID_1", "nl_growth", "GID_0")
+)
+interaction_fe_admin2 <- run_models_by_aid_type(
+    panel_aid_admin2, aid_types,
+    function(df) perform_interaction_fe_analysis(df, "GID_2", "nl_growth", "GID_0")
+)
+
+save_and_show_table(
+    interaction_ols_admin1,
+    "aidtype_ols_interaction_growth_admin1.tex",
+    include_interaction = TRUE,
+    table_title = "Table 4A. OLS Interaction Models (Frag x Governance): Growth, Admin1"
+)
+save_and_show_table(
+    interaction_ols_admin2,
+    "aidtype_ols_interaction_growth_admin2.tex",
+    include_interaction = TRUE,
+    table_title = "Table 4B. OLS Interaction Models (Frag x Governance): Growth, Admin2"
+)
+save_and_show_table(
+    interaction_fe_admin1,
+    "aidtype_fe_interaction_growth_admin1.tex",
+    include_interaction = TRUE,
+    table_title = "Table 5A. FE Interaction Models (Frag x Governance): Growth, Admin1"
+)
+save_and_show_table(
+    interaction_fe_admin2,
+    "aidtype_fe_interaction_growth_admin2.tex",
+    include_interaction = TRUE,
+    table_title = "Table 5B. FE Interaction Models (Frag x Governance): Growth, Admin2"
+)
+```
+
+## 3) Health-only analysis on U5M with high/low governance split
+
+```{r health_u5m_split, results='asis'}
+health_admin1 <- panel_aid_admin1 %>% filter(study_group == "health")
+health_admin2 <- panel_aid_admin2 %>% filter(study_group == "health")
+
+health_admin1_high <- health_admin1 %>% filter(high_gov == 1L)
+health_admin1_low <- health_admin1 %>% filter(high_gov == 0L)
+health_admin2_high <- health_admin2 %>% filter(high_gov == 1L)
+health_admin2_low <- health_admin2 %>% filter(high_gov == 0L)
+
+health_models_admin1 <- list(
+    "OLS High Gov" = perform_ols_analysis(health_admin1_high, "GID_1", "u5m", "GID_0"),
+    "OLS Low Gov" = perform_ols_analysis(health_admin1_low, "GID_1", "u5m", "GID_0"),
+    "FE High Gov" = perform_fe_analysis(health_admin1_high, "GID_1", "u5m", "GID_0"),
+    "FE Low Gov" = perform_fe_analysis(health_admin1_low, "GID_1", "u5m", "GID_0"),
+    "CFA High Gov" = perform_cfa_analysis(health_admin1_high, "GID_1", "u5m", "IV_lag", "GID_0"),
+    "CFA Low Gov" = perform_cfa_analysis(health_admin1_low, "GID_1", "u5m", "IV_lag", "GID_0")
+)
+
+health_models_admin2 <- list(
+    "OLS High Gov" = perform_ols_analysis(health_admin2_high, "GID_2", "u5m", "GID_0"),
+    "OLS Low Gov" = perform_ols_analysis(health_admin2_low, "GID_2", "u5m", "GID_0"),
+    "FE High Gov" = perform_fe_analysis(health_admin2_high, "GID_2", "u5m", "GID_0"),
+    "FE Low Gov" = perform_fe_analysis(health_admin2_low, "GID_2", "u5m", "GID_0"),
+    "CFA High Gov" = perform_cfa_analysis(health_admin2_high, "GID_2", "u5m", "IV_lag", "GID_0"),
+    "CFA Low Gov" = perform_cfa_analysis(health_admin2_low, "GID_2", "u5m", "IV_lag", "GID_0")
+)
+
+save_and_show_table(
+    health_models_admin1,
+    "health_u5m_split_admin1.tex",
+    include_cfa = TRUE,
+    table_title = "Table 6A. Health U5M Models by Governance Group: Admin1 (OLS, FE, CFA)"
+)
+save_and_show_table(
+    health_models_admin2,
+    "health_u5m_split_admin2.tex",
+    include_cfa = TRUE,
+    table_title = "Table 6B. Health U5M Models by Governance Group: Admin2 (OLS, FE, CFA)"
+)
+```
+
+## (4) Health-only interaction models on U5M
+
+```{r health_u5m_interaction, results='asis'}
+health_interaction_models <- list(
+    "Admin1 OLS Interaction" = perform_interaction_ols_analysis(health_admin1, "GID_1", "u5m", "GID_0"),
+    "Admin1 FE Interaction" = perform_interaction_fe_analysis(health_admin1, "GID_1", "u5m", "GID_0"),
+    "Admin2 OLS Interaction" = perform_interaction_ols_analysis(health_admin2, "GID_2", "u5m", "GID_0"),
+    "Admin2 FE Interaction" = perform_interaction_fe_analysis(health_admin2, "GID_2", "u5m", "GID_0")
+)
+
+save_and_show_table(
+    health_interaction_models,
+    "health_u5m_interaction_models.tex",
+    include_interaction = TRUE,
+    landscape = TRUE,
+    table_title = "Table 7. Health U5M Interaction Models (Frag x Governance): Admin1 and Admin2"
+)
+```

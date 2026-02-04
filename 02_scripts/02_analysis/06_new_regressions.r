@@ -1,101 +1,6 @@
 ### DiD ####
 # Regression Analysis
-if (!require("pacman")) {
-  install.packages("pacman")
-}
-pacman::p_load(
-  tidyverse,
-  here,
-  readr,
-  janitor,
-  sjmisc,
-  plm,
-  marginaleffects,
-  gtsummary,
-  car,
-  stargazer,
-  broom,
-  fixest,
-  did,
-  interflex
-)
-
-
-panel_aid_admin1 <- read_csv(here("01_panel_data", "panel_aid_admin1_fin.csv"))
-panel_aid_admin2 <- read_csv(here("01_panel_data", "panel_aid_admin2_fin.csv"))
-
-
-# Ensure proper ordering before applying lag()
-panel_aid_admin1 <- panel_aid_admin1 %>%
-  arrange(GID_1, year) %>% # Sort before grouping
-  group_by(GID_1) %>%
-  rename(mean_nl = mean) %>%
-  mutate(
-    lag_mean_nl = dplyr::lag(mean_nl), # Get the value from the previous year
-    nl_growth = case_when(
-      is.na(lag_mean_nl) ~ NA_real_, # No growth for the first year
-      TRUE ~
-        ((log(mean_nl + 0.01) - log(lag_mean_nl + 0.01)) /
-          log(lag_mean_nl + 0.01)) *
-        100 # Calculate percentage growth with logging
-    ),
-    lag_hhi_admin1 = dplyr::lag(frag_index_admin1),
-    lag_pop_admin1 = dplyr::lag(ln_pop_admin1),
-    lag_donor_count_admin1 = dplyr::lag(donor_count_admin1),
-    lag_total_proj_admin1 = dplyr::lag(total_proj_admin1),
-    lag_total_aid_admin1 = log(lag(total_aid_admin1) + .01)
-  ) %>%
-  filter(
-    nl_growth > quantile(nl_growth, probs = .05, na.rm = TRUE) &
-      nl_growth < quantile(nl_growth, probs = .95, na.rm = TRUE)
-  ) %>%
-  ungroup()
-
-
-panel_aid_admin2 <- panel_aid_admin2 %>%
-  arrange(GID_2, year) %>% # Sort before grouping
-  group_by(GID_2) %>%
-  rename(mean_nl = mean) %>%
-  mutate(
-    lag_mean_nl = dplyr::lag(mean_nl), # Get the value from the previous year
-    nl_growth = case_when(
-      is.na(lag_mean_nl) ~ NA_real_, # No growth for the first year
-      TRUE ~
-        ((log(mean_nl + 0.01) - log(lag_mean_nl + 0.01)) /
-          log(lag_mean_nl + 0.01)) *
-        100 # Calculate percentage growth with logging
-    ),
-    lag_hhi_admin2 = dplyr::lag(frag_index_admin2),
-    lag_pop_admin2 = dplyr::lag(ln_pop_admin2),
-    lag_donor_count_admin2 = dplyr::lag(donor_count_admin2),
-    lag_total_proj_admin2 = dplyr::lag(total_proj_admin2),
-    lag_total_aid_admin2 = log(lag(total_aid_admin2) + .01)
-  ) %>%
-  filter(
-    nl_growth > quantile(nl_growth, probs = .05, na.rm = TRUE) &
-      nl_growth < quantile(nl_growth, probs = .95, na.rm = TRUE)
-  ) %>%
-  ungroup()
-
-
-# Split the sample into high and low SGQ
-panel_aid_admin1 <- panel_aid_admin1 %>%
-  mutate(
-    med_sgq_admin1 = if_else(
-      mean_sgq_admin1 > quantile(mean_sgq_admin1, 0.75, na.rm = TRUE),
-      1,
-      0
-    )
-  )
-
-panel_aid_admin2 <- panel_aid_admin2 %>%
-  mutate(
-    med_sgq_admin2 = if_else(
-      mean_sgq_admin2 > quantile(mean_sgq_admin2, 0.75, na.rm = TRUE),
-      1,
-      0
-    )
-  )
+source(here::here("02_scripts", "02_analysis", "_setup_new_regressions.R"))
 
 panel_aid_admin1 %>%
   group_by(med_sgq_admin1) %>%
@@ -105,18 +10,6 @@ panel_aid_admin1 %>%
     sd_growth = sd(nl_growth, na.rm = TRUE),
     n = n()
   )
-
-high_admin1 <- panel_aid_admin1 %>%
-  filter(panel_aid_admin1$med_sgq_admin1 == 1)
-
-low_admin1 <- panel_aid_admin1 %>%
-  filter(panel_aid_admin1$med_sgq_admin1 == 0)
-
-high_admin2 <- panel_aid_admin2 %>%
-  filter(med_sgq_admin2 == 1)
-
-low_admin2 <- panel_aid_admin2 %>%
-  filter(med_sgq_admin2 == 0)
 
 summary(high_admin1)
 
@@ -570,7 +463,3 @@ etable(
   tex = TRUE, # Save as LaTeX
   file = here("03_output", "tabs", "table2_cfe_frag_ind.tex") # Specify output file
 )
-
-
-DescTools::Desc(panel_aid_admin1$nl_growth)
-DescTools::Desc(panel_aid_admin2$nl_growth)

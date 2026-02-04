@@ -30,3 +30,35 @@
 \par\endgroup
 
 
+
+\begingroup
+\centering
+\begin{tabular}{lcccc}
+   \tabularnewline \midrule \midrule
+   Dependent Variable: & \multicolumn{4}{c}{nl\_growth}\\
+                      & High Admin1 (Educ) & Low Admin1 (Educ) & High Admin2 (Health) & Low Admin2 (Health) \\   
+   Model:             & (1)                & (2)               & (3)                  & (4)\\  
+   \midrule
+   \emph{Variables}\\
+   frag\_index        & 0.1443             & 0.0484            & 0.5023               & -0.3129\\   
+                      & (0.2427)           & (0.1791)          & (0.3701)             & (0.4061)\\   
+   Lag LN(Total Aid)  & 0.0817$^{*}$       & 0.0356$^{*}$      & 0.0254$^{*}$         & 0.0024\\   
+                      & (0.0428)           & (0.0196)          & (0.0138)             & (0.0408)\\   
+   Lag LN(Population) & 16.95$^{**}$       & 8.020$^{**}$      & 8.502                & 9.882$^{***}$\\   
+                      & (6.822)            & (3.433)           & (5.599)              & (3.458)\\   
+   \midrule
+   \emph{Fixed-effects}\\
+   GID\_0-year        & Yes                & Yes               & Yes                  & Yes\\  
+   GID\_1             & Yes                & Yes               &                      & \\  
+   GID\_2             &                    &                   & Yes                  & Yes\\  
+   \midrule
+   \emph{Fit statistics}\\
+   Observations       & 2,285              & 6,862             & 4,139                & 12,420\\  
+   R$^2$              & 0.18032            & 0.16623           & 0.22490              & 0.22660\\  
+   \midrule \midrule
+   \multicolumn{5}{l}{\emph{Clustered (GID\_0) standard-errors in parentheses}}\\
+   \multicolumn{5}{l}{\emph{Signif. Codes: ***: 0.01, **: 0.05, *: 0.1}}\\
+\end{tabular}
+\par\endgroup
+
+
