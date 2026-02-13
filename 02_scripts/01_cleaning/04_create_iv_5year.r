@@ -16,7 +16,7 @@ pacman::p_load(
 map_to_5year_bucket <- function(year) {
   dplyr::case_when(
     year %in% 2005:2009 ~ 2005,
-    year %in% 2010:2015 ~ 2010,
+    year %in% 2010:2014 ~ 2010,
     TRUE ~ NA_real_
   )
 }
@@ -42,7 +42,7 @@ raw_aid_data <- read_csv(here("00_rawdata", "GODAD_projectlevel.csv")) %>%
   filter(
     gid_0 %in% countries_iso3,
     paymentyear >= 2005,
-    paymentyear <= 2015,
+    paymentyear <= 2014,
     !is.na(latitude),
     !is.na(longitude),
     !is.na(year),
@@ -107,7 +107,7 @@ frac_data_annual <- read_csv("00_rawdata/DPI2020.csv") %>%
       govfrac
     )
   ) %>%
-  filter(countryname %in% donor_countries & year >= 2005 & year <= 2015) %>%
+  filter(countryname %in% donor_countries & year >= 2005 & year <= 2014) %>%
   select(donor = countryname, year, frac_full)
 
 # Estimate weighted average donor fractionalization for World Bank
@@ -124,7 +124,7 @@ votes <- read_csv("00_rawdata/pdfs/wb_vote_shares.csv") %>%
   mutate(year = str_replace(year, "Vote_", "")) %>%
   filter(year != "avg") %>%
   mutate(year = as.numeric(year)) %>%
-  complete(Country = unique(Country), year = 2005:2015) %>%
+  complete(Country = unique(Country), year = 2005:2014) %>%
   group_by(Country) %>%
   mutate(vote_share = na.approx(vote_share, na.rm = TRUE, rule = 2)) %>%
   ungroup() %>%

@@ -28,7 +28,7 @@ source("02_scripts/utils/godad_processing_utils.r")
 map_to_5year_bucket <- function(year) {
   dplyr::case_when(
     year %in% 2005:2009 ~ 2005,
-    year %in% 2010:2015 ~ 2010,
+    year %in% 2010:2014 ~ 2010,
     TRUE ~ NA_real_
   )
 }
@@ -84,7 +84,7 @@ raw_dat <- raw_dat %>%
   filter(
     gid_0 %in% countries_iso3,
     paymentyear >= 2005,
-    paymentyear <= 2015,
+    paymentyear <= 2014,
     !is.na(latitude),
     !is.na(longitude),
     !is.na(bucket_5year),
