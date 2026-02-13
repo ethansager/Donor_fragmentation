@@ -1,0 +1,34 @@
+
+\begingroup
+\centering
+\begin{tabular}{lcccc}
+   \tabularnewline \midrule \midrule
+   Dependent Variable: & \multicolumn{4}{c}{nl\_growth}\\
+                             & High Admin1             & Low Admin1                  & High Admin2             & Low Admin2 \\   
+   Model:                    & (1)                     & (2)                         & (3)                     & (4)\\  
+   \midrule
+   \emph{Variables}\\
+   frag\_index               & 1.101                   & 7.267                       & -13.30                  & 9.727\\   
+                             & (20.21)                 & (13.48)                     & (9.485)                 & (5.797)\\   
+   Lag LN(Total Aid)         & 1.243                   & 0.2468                      & -0.5376                 & 0.7382$^{*}$\\   
+                             & (1.327)                 & (1.019)                     & (0.4361)                & (0.4154)\\   
+   Lag LN(Population)        & -1.026                  & -3.120$^{***}$              & -0.4236                 & 0.6755\\   
+                             & (0.8015)                & (0.8550)                    & (0.9202)                & (1.163)\\   
+   CFA Residuals             & $5.74\times 10^{-10}$   & $2.5\times 10^{-8}$$^{**}$  & $2.62\times 10^{-8}$    & $4.44\times 10^{-8}$$^{***}$\\    
+                             & ($1.61\times 10^{-8}$)  & ($1.15\times 10^{-8}$)      & ($2.17\times 10^{-8}$)  & ($1.41\times 10^{-8}$)\\    
+   Frag. x Lag LN(Total Aid) & 0.0295                  & -0.2500                     & 1.154$^{*}$             & -0.7462\\   
+                             & (1.161)                 & (0.9009)                    & (0.6016)                & (0.4684)\\   
+   \midrule
+   \emph{Fixed-effects}\\
+   GID\_0                    & Yes                     & Yes                         & Yes                     & Yes\\  
+   \midrule
+   \emph{Fit statistics}\\
+   Observations              & 75                      & 224                         & 263                     & 787\\  
+   R$^2$                     & 0.33352                 & 0.22481                     & 0.15141                 & 0.14059\\  
+   \midrule \midrule
+   \multicolumn{5}{l}{\emph{Clustered (GID\_0) standard-errors in parentheses}}\\
+   \multicolumn{5}{l}{\emph{Signif. Codes: ***: 0.01, **: 0.05, *: 0.1}}\\
+\end{tabular}
+\par\endgroup
+
+
