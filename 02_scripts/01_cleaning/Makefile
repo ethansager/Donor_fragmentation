@@ -1,7 +1,7 @@
 # Makefile for Data Cleaning Scripts
 # This builds all cleaned datasets needed for analysis
 
-.PHONY: all shapefiles afrobarometer dependent-vars population panel-data clean help
+.PHONY: all shapefiles afrobarometer dependent-vars population panel-data panel-data-base panel-data-5year panel-data-base-5year clean help
 
 # R command (adjust if needed for your environment)
 RSCRIPT = Rscript
@@ -22,6 +22,8 @@ NL_DATA = $(NL_DIR)/processed_topcodefix_nl_admin1.csv $(NL_DIR)/processed_topco
 POPULATION = $(POP_DIR)/admin1_population.csv $(POP_DIR)/admin2_population.csv
 PANEL_DATA_BASE = $(PANEL_DIR)/panel_aid_admin1.csv $(PANEL_DIR)/panel_aid_admin2.csv
 PANEL_DATA = $(PANEL_DIR)/panel_aid_admin1_fin.csv $(PANEL_DIR)/panel_aid_admin2_fin.csv
+PANEL_DATA_BASE_5YR = $(PANEL_DIR)/panel_aid_admin1_5year.csv $(PANEL_DIR)/panel_aid_admin2_5year.csv
+PANEL_DATA_5YR = $(PANEL_DIR)/panel_aid_admin1_fin_5year.csv $(PANEL_DIR)/panel_aid_admin2_fin_5year.csv
 
 
 # Main target - build all cleaned datasets
@@ -78,6 +80,20 @@ panel-data: $(PANEL_DATA)
 $(PANEL_DATA): 04_create_iv.r $(DEP_VARS) $(POPULATION) $(PANEL_DATA_BASE)
 	@echo "Building panel data (main)..."
 	cd ../.. && $(RSCRIPT) 02_scripts/01_cleaning/04_create_iv.r
+
+# Build base 5-year panel datasets
+panel-data-base-5year: $(PANEL_DATA_BASE_5YR)
+
+$(PANEL_DATA_BASE_5YR): 03_geo_clean_5year.r $(DEP_VARS) $(POPULATION) $(AFRO_PANEL)
+	@echo "Building panel data (5-year buckets)..."
+	cd ../.. && $(RSCRIPT) 02_scripts/01_cleaning/03_geo_clean_5year.r
+
+# Build final 5-year panel datasets
+panel-data-5year: $(PANEL_DATA_5YR)
+
+$(PANEL_DATA_5YR): 04_create_iv_5year.r $(DEP_VARS) $(POPULATION) $(PANEL_DATA_BASE_5YR)
+	@echo "Building panel data with IV (5-year buckets)..."
+	cd ../.. && $(RSCRIPT) 02_scripts/01_cleaning/04_create_iv_5year.r
 
 # Clean all generated files
 clean:
