@@ -1,13 +1,14 @@
 # Makefile for Analysis Scripts
 # This runs regressions and generates output tables
 
-.PHONY: all regressions tables figures clean help
+.PHONY: all regressions tables regressions-5year tables-5year figures clean help
 
 # R command
 RSCRIPT = Rscript
 
 # Input data
 PANEL_DATA_MAIN = ../../01_panel_data/panel_aid_admin1_fin.csv ../../01_panel_data/panel_aid_admin2_fin.csv
+PANEL_DATA_5YEAR = ../../01_panel_data/panel_aid_admin1_fin_5year.csv ../../01_panel_data/panel_aid_admin2_fin_5year.csv
 
 # Output files
 TABLES_MAIN = ../../03_outputs/tabs/table1_ols.tex ../../03_outputs/tabs/table1_fe.tex ../../03_outputs/tabs/table2_cfe.tex ../../03_outputs/tabs/table2_cfe_u5m.tex
@@ -29,6 +30,14 @@ regressions: $(PANEL_DATA_MAIN)
 tables: regressions $(PANEL_DATA_MAIN)
 	@echo "Generating regression tables..."
 	cd ../.. && $(RSCRIPT) 02_scripts/02_analysis/06_new_regressions.R
+
+# Run regressions on 5-year bucketed data
+regressions-5year: $(PANEL_DATA_5YEAR)
+	@echo "Running 5-year bucketed control-function analysis..."
+	cd ../.. && $(RSCRIPT) 02_scripts/02_analysis/06_new_regressions_5year.r
+
+# Generate 5-year table outputs
+tables-5year: regressions-5year
 
 # Generate figures
 figures: $(PANEL_DATA_MAIN)

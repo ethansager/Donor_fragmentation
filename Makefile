@@ -1,7 +1,7 @@
 # Main Makefile for Donor Fragmentation Project
 # This orchestrates the entire data processing and analysis pipeline
 
-.PHONY: all clean clean-data clean-output help cleaning analysis tables
+.PHONY: all clean clean-data clean-output help cleaning cleaning-5year analysis analysis-5year tables tables-5year
 
 # Default target
 all: cleaning analysis tables
@@ -16,8 +16,21 @@ analysis: cleaning
 	@echo "Running analysis pipeline..."
 	$(MAKE) -C 02_scripts/02_analysis
 
+# Build 5-year bucketed panels only
+cleaning-5year:
+	@echo "Running 5-year data build..."
+	$(MAKE) -C 02_scripts/01_cleaning panel-data-5year
+
+# Run 5-year control-function analysis
+analysis-5year: cleaning-5year
+	@echo "Running 5-year analysis pipeline..."
+	$(MAKE) -C 02_scripts/02_analysis tables-5year
+
 # Generate all tables (shortcut for analysis target)
 tables: analysis
+
+# Generate 5-year tables only
+tables-5year: analysis-5year
 
 # Clean all generated data and outputs
 clean: clean-data clean-output
