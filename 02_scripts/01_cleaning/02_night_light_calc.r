@@ -172,7 +172,7 @@ ssa_admin1 <- sf::st_as_sf(geodata::gadm(
 ))
 
 raster_files <- list.files(
-  here("00_rawdata", "nightlights", "clean_dmsp"),
+  here("00_rawdata", "nightlights", "africa"),
   pattern = "\\.tif$",
   full.names = TRUE
 )

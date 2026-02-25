@@ -21,7 +21,12 @@ pacman::p_load(
   interflex
 )
 
-panel_suffix <- Sys.getenv("PANEL_SUFFIX", unset = "")
+panel_suffix <- Sys.getenv("PANEL_SUFFIX", unset = "_5year_1995_2015")
+default_lag_t <- as.integer(Sys.getenv("LAG_T", unset = "1"))
+default_growth_requires_full_windows <- tolower(
+  Sys.getenv("GROWTH_REQUIRES_FULL_WINDOWS", unset = "true")
+) %in% c("1", "true", "yes", "y")
+default_window_years <- ifelse(grepl("_5year", panel_suffix, fixed = TRUE), 5L, 1L)
 
 panel_admin1_path <- here(
   "01_panel_data",
@@ -74,28 +79,48 @@ prepare_panel <- function(
     pop_var,
     donor_var,
     proj_var,
-    aid_var
+    aid_var,
+    lag_t = default_lag_t,
+    growth_requires_full_windows = default_growth_requires_full_windows,
+    window_years = default_window_years
 ) {
-  data %>%
+  if (!("period_years" %in% names(data))) {
+    data <- data %>% mutate(period_years = window_years)
+  }
+
+  growth_denom <- if (window_years == 5L) {
+    as.numeric(window_years * lag_t)
+  } else {
+    as.numeric(lag_t)
+  }
+
+  panel <- data %>%
     normalize_panel_columns() %>%
     arrange(.data[[admin_id]], year) %>%
     group_by(.data[[admin_id]]) %>%
     mutate(
-      lag_mean_nl = dplyr::lag(mean_nl),
+      lag_mean_nl = dplyr::lag(mean_nl, n = lag_t),
+      lag_period_years = dplyr::lag(period_years, n = lag_t),
       nl_growth = case_when(
         is.na(lag_mean_nl) ~ NA_real_,
         TRUE ~
           ((log(mean_nl + 0.01) - log(lag_mean_nl + 0.01)) /
-            log(lag_mean_nl + 0.01)) * 100
+            growth_denom) * 100
       ),
-      lag_frag = dplyr::lag(.data[[frag_var]]),
-      lag_log_pop = dplyr::lag(.data[[pop_var]]),
-      lag_donor_count = dplyr::lag(.data[[donor_var]]),
-      lag_total_proj = dplyr::lag(.data[[proj_var]]),
-      lag_total_aid = log(dplyr::lag(.data[[aid_var]]) + 0.01)
+      lag_frag = dplyr::lag(.data[[frag_var]], n = lag_t),
+      lag_log_pop = dplyr::lag(.data[[pop_var]], n = lag_t),
+      lag_donor_count = dplyr::lag(.data[[donor_var]], n = lag_t),
+      lag_total_proj = dplyr::lag(.data[[proj_var]], n = lag_t),
+      lag_total_aid = log(dplyr::lag(.data[[aid_var]], n = lag_t) + 0.01)
     ) %>%
-    ungroup() %>%
-    winsorize_growth()
+    ungroup()
+
+  if (isTRUE(growth_requires_full_windows)) {
+    panel <- panel %>%
+      filter(period_years == window_years, lag_period_years == window_years)
+  }
+
+  panel %>% winsorize_growth()
 }
 
 add_capacity_split <- function(data, sgq_var, out_var) {

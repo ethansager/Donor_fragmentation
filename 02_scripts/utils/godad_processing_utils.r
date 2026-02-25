@@ -38,7 +38,12 @@ apply_sector_mapping <- function(
     )
 }
 
-build_panels_for_type <- function(dat_dt, type_name, file_suffix) {
+build_panels_for_type <- function(
+    dat_dt,
+    type_name,
+    file_suffix,
+    period_metadata_tbl = NULL
+) {
     # Create HHI for admin2 level
     hhi_results_admin2 <- dat_dt[,
         .(
@@ -250,6 +255,7 @@ build_panels_for_type <- function(dat_dt, type_name, file_suffix) {
             year,
             starts_with("frag_"),
             starts_with("mean_"),
+            starts_with("sgq_status"),
             mean_nl = mean,
             sum_nl = sum,
             u5m,
@@ -276,6 +282,7 @@ build_panels_for_type <- function(dat_dt, type_name, file_suffix) {
             year,
             starts_with("frag_"),
             starts_with("mean_"),
+            starts_with("sgq_status"),
             mean_nl = mean,
             sum_nl = sum,
             u5m,
@@ -292,6 +299,13 @@ build_panels_for_type <- function(dat_dt, type_name, file_suffix) {
             # distance_to_capital, capital_region, #spei_admin2,
             # nearest_city_dist, urban_share = Urban_share, ge_pct
         )
+
+    if (!is.null(period_metadata_tbl)) {
+        panel_aid_admin1_fin <- panel_aid_admin1_fin %>%
+            left_join(period_metadata_tbl, by = "year")
+        panel_aid_admin2_fin <- panel_aid_admin2_fin %>%
+            left_join(period_metadata_tbl, by = "year")
+    }
 
     # Save outputs for this type
     write_csv(
