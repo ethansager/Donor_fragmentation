@@ -27,7 +27,7 @@ PANEL_DATA_5YR = $(PANEL_DIR)/panel_aid_admin1_fin_5year.csv $(PANEL_DIR)/panel_
 
 
 # Main target - build all cleaned datasets
-all: shapefiles afrobarometer nightlights dependent-vars population panel-data panel-data-base
+all: shapefiles afrobarometer nightlights dependent-vars population panel-data
 	@echo "All data cleaning complete!"
 
 # Build shapefiles from GADM data
@@ -44,21 +44,14 @@ $(AFRO_PANEL): 01_build_afro_full.r $(SHAPEFILES)
 	@echo "Processing Afrobarometer data..."
 	cd ../.. && $(RSCRIPT) 02_scripts/01_cleaning/01_build_afro_full.r
 
-# Build nightlights 
-nightlights: $(NL_DATA)
-
-$(NL_DATA): 02_night_light_calc.r $(SHAPEFILES) ../utils/spatial_processing_utils.r
-	@echo "Building nightlights data..."
-	cd ../.. && $(RSCRIPT) 02_scripts/01_cleaning/02_night_light_calc.r
 
 # Build dependent variables (nightlights, U5M)
 dependent-vars: $(DEP_VARS)
+nightlights: $(NL_DATA)
 
-$(DEP_VARS): 02_build_dependent_vars.r $(SHAPEFILES) ../utils/spatial_processing_utils.r
+$(DEP_VARS) $(NL_DATA) &: 02_build_dependent_vars.r $(SHAPEFILES) ../utils/spatial_processing_utils.r
 	@echo "Building dependent variables..."
 	cd ../.. && $(RSCRIPT) 02_scripts/01_cleaning/02_build_dependent_vars.r
-
-
 
 # Build population data
 population: $(POPULATION)

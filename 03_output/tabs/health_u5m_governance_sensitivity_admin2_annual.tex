@@ -1,0 +1,34 @@
+
+\begin{table}[H]
+   \caption{Table 8B. Health U5M governance sensitivity models: Admin2 [5-year panel; Annual periods]}
+   \centering
+   \begin{tabular}{lccc}
+      \tabularnewline \midrule \midrule
+      Dependent Variable: & \multicolumn{3}{c}{u5m}\\
+                                                         & Baseline (Interpolated SGQ) & Alternative A: Carry-forward SGQ & Alternative B: Bounded-trend SGQ \\   
+      Model:                                             & (1)                         & (2)                              & (3)\\  
+      \midrule
+      \emph{Variables}\\
+      Constant                                           & 0.0396                      & 0.0399                           & 0.0395\\   
+                                                         & (0.0454)                    & (0.0448)                         & (0.0461)\\   
+      Lag Fragmentation                                  & 0.0006                      & 0.0007                           & 0.0005\\   
+                                                         & (0.0059)                    & (0.0058)                         & (0.0060)\\   
+      Lag Governance (Spec-Centered)                     & 0.0004                      & 0.0003                           & 0.0004\\   
+                                                         & (0.0004)                    & (0.0004)                         & (0.0005)\\   
+      Lag LN(Total Aid)                                  & $6.45\times 10^{-6}$        & $8.66\times 10^{-6}$             & $-5.69\times 10^{-6}$\\    
+                                                         & (0.0004)                    & (0.0004)                         & (0.0004)\\   
+      Lag LN(Population)                                 & 0.0036                      & 0.0036                           & 0.0036\\   
+                                                         & (0.0038)                    & (0.0038)                         & (0.0039)\\   
+      Lag Fragmentation x Lag Governance (Spec-Centered) & $-1.98\times 10^{-5}$       & 0.0002                           & $3.2\times 10^{-5}$\\    
+                                                         & (0.0003)                    & (0.0003)                         & (0.0003)\\   
+      \midrule
+      \emph{Fit statistics}\\
+      Observations                                       & 4,274                       & 4,274                            & 4,274\\  
+      R$^2$                                              & 0.01900                     & 0.01978                          & 0.01697\\  
+      \midrule \midrule
+      \multicolumn{4}{l}{\emph{Clustered (GID\_0) standard-errors in parentheses}}\\
+      \multicolumn{4}{l}{\emph{Signif. Codes: ***: 0.01, **: 0.05, *: 0.1}}\\
+   \end{tabular}
+\end{table}
+
+

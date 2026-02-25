@@ -1,0 +1,36 @@
+
+\begin{table}[H]
+   \caption{Table 6A. Health U5M Models by Governance Group: Admin1 (OLS, FE, CFA) [5-year panel; Annual periods]}
+   \centering
+   \begin{tabular}{lcccccc}
+      \tabularnewline \midrule \midrule
+      Dependent Variable: & \multicolumn{6}{c}{u5m}\\
+                         & OLS High Gov & OLS Low Gov           & FE High Gov             & FE Low Gov              & CFA High Gov             & CFA Low Gov \\   
+      Model:             & (1)          & (2)                   & (3)                     & (4)                     & (5)                      & (6)\\  
+      \midrule
+      \emph{Variables}\\
+      Constant           & -0.0381      & -0.0353               &                         &                         &                          &   \\   
+                         & (0.0570)     & (0.0806)              &                         &                         &                          &   \\   
+      Lag Fragmentation  & 0.0148       & 0.0009                & -0.0018$^{*}$           & -0.0012                 & -0.0018$^{*}$            & -0.0012\\   
+                         & (0.0090)     & (0.0104)              & (0.0010)                & (0.0010)                & (0.0010)                 & (0.0010)\\   
+      Lag LN(Total Aid)  & 0.0010       & $2.81\times 10^{-5}$  & -0.0001$^{***}$         & -0.0001                 & -0.0001$^{***}$          & -0.0001\\   
+                         & (0.0007)     & (0.0006)              & ($3.51\times 10^{-5}$)  & ($7.81\times 10^{-5}$)  & ($3.41\times 10^{-5}$)   & ($7.81\times 10^{-5}$)\\    
+      Lag LN(Population) & 0.0081$^{*}$ & 0.0084                & 0.0147                  & 0.0125                  & 0.0147                   & 0.0125\\   
+                         & (0.0041)     & (0.0062)              & (0.0094)                & (0.0092)                & (0.0090)                 & (0.0092)\\   
+      CFA Residual       &              &                       &                         &                         & $4.45\times 10^{-11}$    & $1.11\times 10^{-11}$\\    
+                         &              &                       &                         &                         & ($2.63\times 10^{-11}$)  & ($3.13\times 10^{-11}$)\\    
+      \midrule
+      \emph{Fixed-effects}\\
+      GID\_0-year        &              &                       & Yes                     & Yes                     & Yes                      & Yes\\  
+      GID\_1             &              &                       & Yes                     & Yes                     & Yes                      & Yes\\  
+      \midrule
+      \emph{Fit statistics}\\
+      Observations       & 625          & 1,948                 & 625                     & 1,948                   & 625                      & 1,948\\  
+      R$^2$              & 0.10196      & 0.06535               & 0.99588                 & 0.99271                 & 0.99589                  & 0.99271\\  
+      \midrule \midrule
+      \multicolumn{7}{l}{\emph{Clustered (GID\_0) standard-errors in parentheses}}\\
+      \multicolumn{7}{l}{\emph{Signif. Codes: ***: 0.01, **: 0.05, *: 0.1}}\\
+   \end{tabular}
+\end{table}
+
+

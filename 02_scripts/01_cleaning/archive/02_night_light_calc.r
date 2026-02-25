@@ -220,7 +220,7 @@ ssa_admin1 %>%
     here(
       "00_rawdata",
       "nightlights",
-      "topcodefix",
+      "africa",
       "processed_topcodefix_nl_admin1.csv"
     )
   )
@@ -268,7 +268,7 @@ ssa_admin2 %>%
     here(
       "00_rawdata",
       "nightlights",
-      "topcodefix",
+      "africa",
       "processed_topcodefix_nl_admin2.csv"
     )
   )

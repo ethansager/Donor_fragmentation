@@ -1,0 +1,34 @@
+
+\begin{table}[H]
+   \caption{Table 3D. CFA Growth Models by Aid Type: Admin2, Low Governance [5-year panel; Annual periods]}
+   \centering
+   \begin{tabular}{lcccccc}
+      \tabularnewline \midrule \midrule
+      Dependent Variable: & \multicolumn{6}{c}{nl\_growth}\\
+                         & educ                   & gov\_support                 & health                  & humanitarian                   & infra                   & other \\   
+      Model:             & (1)                    & (2)                          & (3)                     & (4)                            & (5)                     & (6)\\  
+      \midrule
+      \emph{Variables}\\
+      Lag Fragmentation  & 0.7168                 & 1.494$^{*}$                  & -1.747                  & 3.843                          & -0.4565                 & 27.39\\   
+                         & (2.243)                & (0.8795)                     & (1.579)                 & (3.696)                        & (0.9085)                & (28.31)\\   
+      Lag LN(Total Aid)  & -0.0667                & 0.0974$^{*}$                 & -0.1583                 & 0.4022                         & -0.0241                 & 2.074\\   
+                         & (0.1669)               & (0.0479)                     & (0.1109)                & (0.2567)                       & (0.0610)                & (1.785)\\   
+      Lag LN(Population) & 6.553                  & 6.680                        & -9.404$^{**}$           & -13.09                         & -2.872                  & -115.5\\   
+                         & (9.665)                & (4.690)                      & (4.077)                 & (12.47)                        & (4.450)                 & (115.6)\\   
+      CFA Residual       & $4.73\times 10^{-8}$   & $-1.86\times 10^{-8}$$^{*}$  & $2.78\times 10^{-8}$    & $-2.26\times 10^{-7}$$^{***}$  & $-3.24\times 10^{-8}$   & $6.76\times 10^{-6}$\\    
+                         & ($1.4\times 10^{-7}$)  & ($10\times 10^{-9}$)         & ($5.38\times 10^{-8}$)  & ($5.15\times 10^{-8}$)         & ($2.42\times 10^{-8}$)  & ($1.02\times 10^{-5}$)\\    
+      \midrule
+      \emph{Fixed-effects}\\
+      GID\_0-year        & Yes                    & Yes                          & Yes                     & Yes                            & Yes                     & Yes\\  
+      GID\_2             & Yes                    & Yes                          & Yes                     & Yes                            & Yes                     & Yes\\  
+      \midrule
+      \emph{Fit statistics}\\
+      Observations       & 1,710                  & 4,787                        & 2,916                   & 465                            & 4,229                   & 162\\  
+      R$^2$              & 0.47285                & 0.33024                      & 0.40447                 & 0.66219                        & 0.35086                 & 0.77858\\  
+      \midrule \midrule
+      \multicolumn{7}{l}{\emph{Clustered (GID\_0) standard-errors in parentheses}}\\
+      \multicolumn{7}{l}{\emph{Signif. Codes: ***: 0.01, **: 0.05, *: 0.1}}\\
+   \end{tabular}
+\end{table}
+
+

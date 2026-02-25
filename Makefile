@@ -1,10 +1,13 @@
 # Main Makefile for Donor Fragmentation Project
 # This orchestrates the entire data processing and analysis pipeline
 
-.PHONY: all clean clean-data clean-output help cleaning cleaning-5year analysis analysis-5year tables tables-5year
+.PHONY: all build clean clean-data clean-output help cleaning cleaning-5year analysis analysis-5year tables tables-5year
 
 # Default target
-all: cleaning analysis tables
+all: cleaning analysis
+
+# Alias for all
+build: all
 
 # Run data cleaning pipeline
 cleaning:
@@ -57,7 +60,7 @@ clean-output:
 help:
 	@echo "Donor Fragmentation Project - Available Make Targets:"
 	@echo ""
-	@echo "  make all          - Run entire pipeline (cleaning + analysis + tables)"
+	@echo "  make all/build    - Run entire pipeline (cleaning + analysis)"
 	@echo "  make cleaning     - Run data cleaning scripts only"
 	@echo "  make analysis     - Run analysis scripts (depends on cleaning)"
 	@echo "  make tables       - Generate regression tables"

@@ -1,0 +1,1078 @@
+---
+title: "Fragmentation, Capacity, and Lag Strategy"
+author: "Ethan Sager"
+format:
+  html:
+    toc: true
+    code-fold: true
+execute:
+  echo: false
+  message: false
+  warning: false
+---
+
+## Why This File Exists
+
+This file implements the exact identification and interpretation workflow we discussed:
+
+1. Use **pre-determined baseline governance capacity** as the moderator.
+2. Estimate the moderation model first on **overall data**, then by **sector**, for both admin levels.
+3. Run **lag sensitivity** over candidate values of `t`.
+4. Report interpretable quantities:
+- marginal effect of fragmentation at capacity `p25`, `p50`, `p75`
+- sign-switch threshold
+- placebo model with future fragmentation
+
+```{r setup}
+if (!requireNamespace("pacman", quietly = TRUE)) {
+    install.packages("pacman")
+}
+
+pacman::p_load(
+    tidyverse,
+    here,
+    readr,
+    fixest,
+    broom,
+    knitr
+)
+
+options(scipen = 999)
+
+# -----------------------------------------------------------------------------
+# Configuration
+# -----------------------------------------------------------------------------
+
+# Default execution target is the 2000-2020 five-year panel.
+panel_suffix <- "_5year_2000_2020"
+lag_t <- 1L
+growth_requires_full_windows <- TRUE
+
+window_label <- if_else(str_detect(panel_suffix, "_5year"), "5-year", "annual")
+window_years <- if_else(str_detect(panel_suffix, "_5year"), 5L, 1L)
+
+# Keep lag grid explicit even when fixed to one value.
+candidate_t <- unique(as.integer(lag_t))
+
+# Baseline year for predetermined capacity moderator.
+baseline_year <- if_else(panel_suffix == "_5year_2000_2020", 2000L, 2005L)
+
+output_dir <- here::here("03_output", "tabs")
+dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
+
+read_panel_csv <- function(file_stub) {
+    file_path <- here::here(
+        "01_panel_data",
+        paste0(file_stub, panel_suffix, ".csv")
+    )
+    if (!file.exists(file_path)) {
+        stop("Missing panel data file: ", file_path)
+    }
+    readr::read_csv(file_path, show_col_types = FALSE)
+}
+
+overall_admin1 <- read_panel_csv("panel_aid_admin1_fin")
+overall_admin2 <- read_panel_csv("panel_aid_admin2_fin")
+sector_admin1 <- read_panel_csv("panel_aid_admin1_by_sector")
+sector_admin2 <- read_panel_csv("panel_aid_admin2_by_sector")
+
+admin_specs <- list(
+    admin1 = list(
+        admin_label = "Admin1",
+        admin_id = "GID_1",
+        frag_var = "frag_index_admin1",
+        pop_var = "ln_pop_admin1",
+        aid_var = "total_aid_admin1",
+        sgq_var = "mean_sgq_admin1",
+        overall_data = overall_admin1,
+        sector_data = sector_admin1
+    ),
+    admin2 = list(
+        admin_label = "Admin2",
+        admin_id = "GID_2",
+        frag_var = "frag_index_admin2",
+        pop_var = "ln_pop_admin2",
+        aid_var = "total_aid_admin2",
+        sgq_var = "mean_sgq_admin2",
+        overall_data = overall_admin2,
+        sector_data = sector_admin2
+    )
+)
+
+safe_num <- function(x, fn = c("mean", "median", "min", "max")) {
+    fn <- match.arg(fn)
+    x <- x[is.finite(x)]
+    if (length(x) == 0) {
+        return(NA_real_)
+    }
+    switch(fn, mean = mean(x), median = median(x), min = min(x), max = max(x))
+}
+
+safe_quantile <- function(x, prob) {
+    x <- x[is.finite(x)]
+    if (length(x) == 0) {
+        return(NA_real_)
+    }
+    as.numeric(quantile(x, probs = prob, na.rm = TRUE))
+}
+
+get_term_name <- function(model, candidates) {
+    found <- intersect(candidates, names(coef(model)))
+    if (length(found) == 0) {
+        return(NA_character_)
+    }
+    found[[1]]
+}
+
+has_within_time_variation <- function(
+    data,
+    admin_id,
+    required_vars = character(0)
+) {
+    d <- data
+    if (length(required_vars) > 0) {
+        d <- d %>%
+            filter(if_all(all_of(required_vars), ~ !is.na(.x) & is.finite(.x)))
+    }
+
+    counts <- d %>%
+        distinct(.data[[admin_id]], year) %>%
+        count(.data[[admin_id]], name = "n_years")
+
+    if (nrow(counts) == 0) {
+        return(FALSE)
+    }
+
+    any(counts$n_years >= 2)
+}
+
+fe_fallback_log <- tibble(
+    stage = character(),
+    admin = character(),
+    t = integer(),
+    fe_term = character(),
+    n_obs = integer(),
+    min_year = double(),
+    max_year = double()
+)
+
+resolve_fe_term <- function(
+    data,
+    admin_id,
+    required_vars,
+    admin_label,
+    t_lag,
+    stage
+) {
+    if (has_within_time_variation(data, admin_id, required_vars)) {
+        return(paste0("GID_0^year + ", admin_id))
+    }
+
+    fe_fallback_log <<- bind_rows(
+        fe_fallback_log,
+        tibble(
+            stage = stage,
+            admin = admin_label,
+            t = t_lag,
+            fe_term = "GID_0",
+            n_obs = nrow(data),
+            min_year = suppressWarnings(min(data$year, na.rm = TRUE)),
+            max_year = suppressWarnings(max(data$year, na.rm = TRUE))
+        )
+    ) %>%
+        distinct()
+
+    "GID_0"
+}
+
+build_baseline_capacity <- function(data, admin_id, sgq_var, baseline_year) {
+    lookup <- data %>%
+        select(unit_id = all_of(admin_id), year, sgq = all_of(sgq_var)) %>%
+        distinct() %>%
+        arrange(unit_id, year) %>%
+        group_by(unit_id) %>%
+        summarise(
+            cap_base = mean(sgq[year == baseline_year], na.rm = TRUE),
+            cap_first = sgq[which(is.finite(sgq))[1]],
+            .groups = "drop"
+        ) %>%
+        mutate(
+            cap_base = if_else(is.finite(cap_base), cap_base, cap_first)
+        ) %>%
+        select(unit_id, cap_base)
+
+    lookup
+}
+
+prepare_lagged_data <- function(
+    data,
+    spec,
+    t_lag,
+    baseline_year,
+    outcome_var = "mean_nl",
+    require_full_windows = growth_requires_full_windows
+) {
+    admin_id <- spec$admin_id
+    group_vars <- admin_id
+    if ("study_group" %in% names(data)) {
+        group_vars <- c(group_vars, "study_group")
+    }
+
+    outcome_col <- if (outcome_var %in% names(data)) {
+        outcome_var
+    } else if ("mean" %in% names(data)) {
+        "mean"
+    } else if ("mean_nl" %in% names(data)) {
+        "mean_nl"
+    } else {
+        stop(
+            "Outcome column not found. Expected one of: ",
+            outcome_var,
+            ", mean, mean_nl"
+        )
+    }
+
+    baseline_lookup <- build_baseline_capacity(
+        data,
+        admin_id,
+        spec$sgq_var,
+        baseline_year
+    )
+
+    if (!("period_years" %in% names(data))) {
+        data <- data %>% mutate(period_years = as.numeric(window_years))
+    }
+
+    growth_denom <- if (window_years == 5L) {
+        as.numeric(window_years * t_lag)
+    } else {
+        as.numeric(t_lag)
+    }
+
+    d <- data %>%
+        left_join(baseline_lookup, by = setNames("unit_id", admin_id)) %>%
+        arrange(across(all_of(group_vars)), year) %>%
+        group_by(across(all_of(group_vars))) %>%
+        mutate(
+            y_lag = dplyr::lag(.data[[outcome_col]], n = t_lag),
+            lag_period_years = dplyr::lag(period_years, n = t_lag),
+            growth = 100 *
+                (log(.data[[outcome_col]] + 0.01) - log(y_lag + 0.01)) /
+                growth_denom,
+            frag_lag = dplyr::lag(.data[[spec$frag_var]], n = t_lag),
+            aid_lag = log(dplyr::lag(.data[[spec$aid_var]], n = t_lag) + 0.01),
+            pop_lag = dplyr::lag(.data[[spec$pop_var]], n = t_lag),
+            gov_lag = dplyr::lag(.data[[spec$sgq_var]], n = t_lag),
+            frag_lead = dplyr::lead(.data[[spec$frag_var]], n = t_lag)
+        ) %>%
+        ungroup() %>%
+        mutate(
+            cap_med = median(cap_base, na.rm = TRUE),
+            cap_c = cap_base - cap_med
+        ) %>%
+        filter(
+            is.finite(growth),
+            is.finite(frag_lag),
+            is.finite(aid_lag),
+            is.finite(pop_lag),
+            is.finite(cap_c)
+        )
+
+    if (isTRUE(require_full_windows) && "period_years" %in% names(d)) {
+        d <- d %>%
+            filter(
+                period_years == window_years,
+                lag_period_years == window_years
+            )
+    }
+
+    d
+}
+
+fit_main_model <- function(data, spec, t_lag, stage = "overall") {
+    d <- prepare_lagged_data(data, spec, t_lag, baseline_year)
+
+    fe_term <- resolve_fe_term(
+        data = d,
+        admin_id = spec$admin_id,
+        required_vars = c("growth", "frag_lag", "cap_c", "aid_lag", "pop_lag"),
+        admin_label = spec$admin_label,
+        t_lag = t_lag,
+        stage = stage
+    )
+
+    model <- fixest::feols(
+        as.formula(paste0(
+            "growth ~ frag_lag * cap_c + aid_lag + pop_lag | ",
+            fe_term
+        )),
+        cluster = ~GID_0,
+        data = d
+    )
+
+    list(
+        model = model,
+        data = d,
+        fe_term = fe_term,
+        t = t_lag,
+        admin = spec$admin_label,
+        stage = stage
+    )
+}
+
+fit_timevarying_model <- function(data, spec, t_lag, stage = "overall_timevarying") {
+    d <- prepare_lagged_data(data, spec, t_lag, baseline_year) %>%
+        filter(is.finite(gov_lag)) %>%
+        mutate(
+            gov_lag_c = gov_lag - median(gov_lag, na.rm = TRUE)
+        )
+
+    fe_term <- resolve_fe_term(
+        data = d,
+        admin_id = spec$admin_id,
+        required_vars = c(
+            "growth",
+            "frag_lag",
+            "gov_lag_c",
+            "aid_lag",
+            "pop_lag"
+        ),
+        admin_label = spec$admin_label,
+        t_lag = t_lag,
+        stage = stage
+    )
+
+    model <- fixest::feols(
+        as.formula(paste0(
+            "growth ~ frag_lag * gov_lag_c + aid_lag + pop_lag | ",
+            fe_term
+        )),
+        cluster = ~GID_0,
+        data = d
+    )
+
+    list(
+        model = model,
+        data = d,
+        fe_term = fe_term,
+        t = t_lag,
+        admin = spec$admin_label,
+        stage = stage
+    )
+}
+
+extract_main_metrics <- function(fit_obj) {
+    model <- fit_obj$model
+    d <- fit_obj$data
+
+    frag_name <- get_term_name(model, c("frag_lag"))
+    int_name <- get_term_name(model, c("frag_lag:cap_c", "cap_c:frag_lag"))
+
+    ct <- fixest::coeftable(model)
+    interaction_est <- if (!is.na(int_name)) ct[int_name, 1] else NA_real_
+    interaction_se <- if (!is.na(int_name)) ct[int_name, 2] else NA_real_
+    interaction_p <- if (!is.na(int_name)) ct[int_name, 4] else NA_real_
+
+    tibble(
+        stage = fit_obj$stage,
+        admin = fit_obj$admin,
+        t = fit_obj$t,
+        fe_term = fit_obj$fe_term,
+        n_obs = nobs(model),
+        n_units = n_distinct(d[[if_else(
+            fit_obj$admin == "Admin1",
+            "GID_1",
+            "GID_2"
+        )]]),
+        year_min = safe_num(d$year, "min"),
+        year_max = safe_num(d$year, "max"),
+        interaction_estimate = interaction_est,
+        interaction_se = interaction_se,
+        interaction_p = interaction_p,
+        interaction_t = interaction_est / interaction_se,
+        r2_within = as.numeric(fixest::fitstat(model, "wr2"))
+    )
+}
+
+marginal_effects_at_quantiles <- function(fit_obj) {
+    model <- fit_obj$model
+    d <- fit_obj$data
+
+    frag_name <- get_term_name(model, c("frag_lag"))
+    int_name <- get_term_name(model, c("frag_lag:cap_c", "cap_c:frag_lag"))
+
+    if (is.na(frag_name) || is.na(int_name)) {
+        return(tibble())
+    }
+
+    b <- coef(model)
+    V <- vcov(model)
+
+    cap_q <- quantile(d$cap_base, probs = c(0.25, 0.50, 0.75), na.rm = TRUE)
+    cap_med <- median(d$cap_base, na.rm = TRUE)
+
+    map_dfr(seq_along(cap_q), function(i) {
+        q_lab <- names(cap_q)[i]
+        cap_raw <- as.numeric(cap_q[i])
+        cap_c <- cap_raw - cap_med
+
+        me <- b[[frag_name]] + b[[int_name]] * cap_c
+        se <- sqrt(
+            V[frag_name, frag_name] +
+                cap_c^2 * V[int_name, int_name] +
+                2 * cap_c * V[frag_name, int_name]
+        )
+
+        tibble(
+            stage = fit_obj$stage,
+            admin = fit_obj$admin,
+            t = fit_obj$t,
+            quantile = q_lab,
+            capacity_value = cap_raw,
+            frag_marginal_effect = me,
+            std_error = se,
+            conf_low = me - 1.96 * se,
+            conf_high = me + 1.96 * se
+        )
+    })
+}
+
+sign_switch_threshold <- function(fit_obj) {
+    model <- fit_obj$model
+    d <- fit_obj$data
+
+    frag_name <- get_term_name(model, c("frag_lag"))
+    int_name <- get_term_name(model, c("frag_lag:cap_c", "cap_c:frag_lag"))
+
+    if (is.na(frag_name) || is.na(int_name)) {
+        return(tibble())
+    }
+
+    b <- coef(model)
+    cap_med <- median(d$cap_base, na.rm = TRUE)
+
+    if (!is.finite(b[[int_name]]) || abs(b[[int_name]]) < 1e-10) {
+        cap_star <- NA_real_
+    } else {
+        cap_star <- cap_med - b[[frag_name]] / b[[int_name]]
+    }
+
+    tibble(
+        stage = fit_obj$stage,
+        admin = fit_obj$admin,
+        t = fit_obj$t,
+        cap_threshold = cap_star
+    )
+}
+
+marginal_effect_curve <- function(fit_obj, n_points = 100L) {
+    model <- fit_obj$model
+    d <- fit_obj$data
+
+    frag_name <- get_term_name(model, c("frag_lag"))
+    int_name <- get_term_name(model, c("frag_lag:cap_c", "cap_c:frag_lag"))
+
+    if (is.na(frag_name) || is.na(int_name)) {
+        return(tibble())
+    }
+
+    b <- coef(model)
+    V <- vcov(model)
+    cap_med <- median(d$cap_base, na.rm = TRUE)
+
+    cap_grid <- seq(
+        quantile(d$cap_base, 0.05, na.rm = TRUE),
+        quantile(d$cap_base, 0.95, na.rm = TRUE),
+        length.out = n_points
+    )
+
+    map_dfr(cap_grid, function(cap_raw) {
+        cap_c <- cap_raw - cap_med
+        me <- b[[frag_name]] + b[[int_name]] * cap_c
+        se <- sqrt(
+            V[frag_name, frag_name] +
+                cap_c^2 * V[int_name, int_name] +
+                2 * cap_c * V[frag_name, int_name]
+        )
+
+        tibble(
+            stage = fit_obj$stage,
+            admin = fit_obj$admin,
+            t = fit_obj$t,
+            capacity_value = cap_raw,
+            frag_marginal_effect = me,
+            conf_low = me - 1.96 * se,
+            conf_high = me + 1.96 * se
+        )
+    })
+}
+
+fit_placebo <- function(data, spec, t_lag) {
+    d <- prepare_lagged_data(data, spec, t_lag, baseline_year) %>%
+        filter(is.finite(frag_lead))
+
+    fe_term <- resolve_fe_term(
+        data = d,
+        admin_id = spec$admin_id,
+        required_vars = c("growth", "frag_lead", "cap_c", "aid_lag", "pop_lag"),
+        admin_label = spec$admin_label,
+        t_lag = t_lag,
+        stage = "placebo"
+    )
+
+    model <- fixest::feols(
+        as.formula(paste0(
+            "growth ~ frag_lead * cap_c + aid_lag + pop_lag | ",
+            fe_term
+        )),
+        cluster = ~GID_0,
+        data = d
+    )
+
+    int_name <- get_term_name(model, c("frag_lead:cap_c", "cap_c:frag_lead"))
+    ct <- fixest::coeftable(model)
+
+    tibble(
+        admin = spec$admin_label,
+        t = t_lag,
+        n_obs = nobs(model),
+        placebo_interaction = if (!is.na(int_name)) {
+            ct[int_name, 1]
+        } else {
+            NA_real_
+        },
+        placebo_se = if (!is.na(int_name)) ct[int_name, 2] else NA_real_,
+        placebo_p = if (!is.na(int_name)) ct[int_name, 4] else NA_real_,
+        fe_term = fe_term
+    )
+}
+
+choose_recommended_t <- function(overall_metrics, candidate_t, panel_suffix) {
+    if (str_detect(panel_suffix, "_5year")) {
+        return(list(
+            t = 1L,
+            reason = "5-year panel has very limited periods; t=1 is the only defensible baseline."
+        ))
+    }
+
+    agg <- overall_metrics %>%
+        filter(stage == "overall") %>%
+        group_by(t) %>%
+        summarise(
+            mean_n = mean(n_obs, na.rm = TRUE),
+            mean_abs_t = mean(abs(interaction_t), na.rm = TRUE),
+            .groups = "drop"
+        ) %>%
+        mutate(retention = mean_n / max(mean_n, na.rm = TRUE))
+
+    eligible <- agg %>% filter(retention >= 0.70)
+    if (nrow(eligible) == 0) {
+        return(list(
+            t = min(candidate_t),
+            reason = "No lag retained >=70% of baseline sample; defaulting to shortest lag."
+        ))
+    }
+
+    best <- eligible %>%
+        arrange(desc(mean_abs_t), t) %>%
+        slice(1)
+
+    list(
+        t = best$t[[1]],
+        reason = paste0(
+            "Selected t=",
+            best$t[[1]],
+            " maximizing signal among lags with >=70% sample retention."
+        )
+    )
+}
+
+governance_status_summary <- function(data, admin_label) {
+    if (!("sgq_status" %in% names(data))) {
+        return(tibble(
+            admin = admin_label,
+            status = "missing_status_column",
+            share = NA_real_,
+            n = NA_integer_
+        ))
+    }
+
+    data %>%
+        mutate(sgq_status = as.character(sgq_status)) %>%
+        count(sgq_status, name = "n") %>%
+        mutate(
+            admin = admin_label,
+            share = n / sum(n, na.rm = TRUE)
+        ) %>%
+        rename(status = sgq_status) %>%
+        select(admin, status, share, n)
+}
+
+governance_stability_metrics <- function(data, spec) {
+    admin_id <- spec$admin_id
+    sgq_var <- spec$sgq_var
+
+    lag_df <- data %>%
+        select(unit = all_of(admin_id), year, sgq = all_of(sgq_var), sgq_status) %>%
+        arrange(unit, year) %>%
+        group_by(unit) %>%
+        mutate(
+            lag_sgq = dplyr::lag(sgq),
+            lag_status = dplyr::lag(sgq_status),
+            abs_change = abs(sgq - lag_sgq)
+        ) %>%
+        ungroup()
+
+    unit_slopes <- data %>%
+        select(unit = all_of(admin_id), year, sgq = all_of(sgq_var)) %>%
+        filter(is.finite(sgq)) %>%
+        group_by(unit) %>%
+        summarise(
+            n = n(),
+            slope = if_else(
+                n >= 2,
+                coef(lm(sgq ~ year))[["year"]],
+                NA_real_
+            ),
+            .groups = "drop"
+        )
+
+    observed_pairs <- lag_df %>%
+        filter(
+            is.finite(sgq),
+            is.finite(lag_sgq),
+            sgq_status == "observed",
+            lag_status == "observed"
+        )
+
+    tibble(
+        admin = spec$admin_label,
+        n_units = n_distinct(data[[admin_id]]),
+        n_rows = nrow(data),
+        lag_corr = cor(
+            lag_df$sgq,
+            lag_df$lag_sgq,
+            use = "pairwise.complete.obs"
+        ),
+        slope_p10 = safe_quantile(unit_slopes$slope, 0.10),
+        slope_p50 = safe_quantile(unit_slopes$slope, 0.50),
+        slope_p90 = safe_quantile(unit_slopes$slope, 0.90),
+        share_small_abs_change_observed = mean(
+            observed_pairs$abs_change <= 0.10,
+            na.rm = TRUE
+        )
+    )
+}
+
+window_drop_diagnostics <- function(spec, t_lag) {
+    unrestricted <- prepare_lagged_data(
+        data = spec$overall_data,
+        spec = spec,
+        t_lag = t_lag,
+        baseline_year = baseline_year,
+        require_full_windows = FALSE
+    )
+
+    restricted <- prepare_lagged_data(
+        data = spec$overall_data,
+        spec = spec,
+        t_lag = t_lag,
+        baseline_year = baseline_year,
+        require_full_windows = TRUE
+    )
+
+    tibble(
+        admin = spec$admin_label,
+        t = t_lag,
+        n_unrestricted = nrow(unrestricted),
+        n_full_windows = nrow(restricted),
+        share_dropped = if_else(
+            n_unrestricted > 0,
+            1 - n_full_windows / n_unrestricted,
+            NA_real_
+        )
+    )
+}
+```
+
+## Data support and lag candidates
+
+```{r data_support}
+support_table <- tibble(
+    dataset = c(
+        "overall_admin1",
+        "overall_admin2",
+        "sector_admin1",
+        "sector_admin2"
+    ),
+    rows = c(
+        nrow(overall_admin1),
+        nrow(overall_admin2),
+        nrow(sector_admin1),
+        nrow(sector_admin2)
+    ),
+    years = c(
+        paste(sort(unique(overall_admin1$year)), collapse = ", "),
+        paste(sort(unique(overall_admin2$year)), collapse = ", "),
+        paste(sort(unique(sector_admin1$year)), collapse = ", "),
+        paste(sort(unique(sector_admin2$year)), collapse = ", ")
+    )
+)
+
+kable(support_table)
+cat("\nCandidate lag t:", paste(candidate_t, collapse = ", "), "\n")
+cat("\nBaseline capacity year:", baseline_year, "\n")
+
+status_diag <- bind_rows(
+    governance_status_summary(overall_admin1, "Admin1"),
+    governance_status_summary(overall_admin2, "Admin2")
+)
+
+stability_diag <- bind_rows(
+    governance_stability_metrics(overall_admin1, admin_specs$admin1),
+    governance_stability_metrics(overall_admin2, admin_specs$admin2)
+)
+
+window_diag <- bind_rows(
+    window_drop_diagnostics(admin_specs$admin1, candidate_t[[1]]),
+    window_drop_diagnostics(admin_specs$admin2, candidate_t[[1]])
+)
+
+readr::write_csv(
+    status_diag,
+    here::here(
+        "03_output",
+        "tabs",
+        paste0("lag_strategy_governance_status", panel_suffix, ".csv")
+    )
+)
+readr::write_csv(
+    stability_diag,
+    here::here(
+        "03_output",
+        "tabs",
+        paste0("lag_strategy_governance_metrics", panel_suffix, ".csv")
+    )
+)
+readr::write_csv(
+    window_diag,
+    here::here(
+        "03_output",
+        "tabs",
+        paste0("lag_strategy_window_diagnostics", panel_suffix, ".csv")
+    )
+)
+
+cat("\nGovernance status composition\n")
+kable(status_diag, digits = 4)
+cat("\nGovernance stability metrics\n")
+kable(stability_diag, digits = 4)
+cat("\nWindow diagnostics (full-window filter impact)\n")
+kable(window_diag, digits = 4)
+```
+
+## Step 1: Overall models across lag choices
+
+```{r overall_lag_grid}
+overall_fits <- list()
+overall_metrics <- list()
+overall_marginals <- list()
+overall_thresholds <- list()
+overall_curves <- list()
+
+for (nm in names(admin_specs)) {
+    spec <- admin_specs[[nm]]
+    for (t_lag in candidate_t) {
+        fit_obj <- fit_main_model(
+            data = spec$overall_data,
+            spec = spec,
+            t_lag = t_lag,
+            stage = "overall"
+        )
+
+        key <- paste(spec$admin_label, "t", t_lag, sep = "_")
+        overall_fits[[key]] <- fit_obj
+        overall_metrics[[key]] <- extract_main_metrics(fit_obj)
+        overall_marginals[[key]] <- marginal_effects_at_quantiles(fit_obj)
+        overall_thresholds[[key]] <- sign_switch_threshold(fit_obj)
+        overall_curves[[key]] <- marginal_effect_curve(fit_obj)
+    }
+}
+
+overall_metrics_df <- bind_rows(overall_metrics)
+overall_marginals_df <- bind_rows(overall_marginals)
+overall_thresholds_df <- bind_rows(overall_thresholds)
+overall_curves_df <- bind_rows(overall_curves)
+
+readr::write_csv(
+    overall_metrics_df,
+    here::here(
+        "03_output",
+        "tabs",
+        paste0("lag_strategy_overall_metrics", panel_suffix, ".csv")
+    )
+)
+readr::write_csv(
+    overall_marginals_df,
+    here::here(
+        "03_output",
+        "tabs",
+        paste0("lag_strategy_overall_marginals", panel_suffix, ".csv")
+    )
+)
+readr::write_csv(
+    overall_thresholds_df,
+    here::here(
+        "03_output",
+        "tabs",
+        paste0("lag_strategy_overall_thresholds", panel_suffix, ".csv")
+    )
+)
+
+kable(overall_metrics_df, digits = 4)
+```
+
+## Step 2: Select a reasonable `t`
+
+```{r choose_t}
+lag_choice <- choose_recommended_t(
+    overall_metrics_df,
+    candidate_t,
+    panel_suffix
+)
+recommended_t <- lag_choice$t
+
+cat("Recommended t =", recommended_t, "\n")
+cat("Reason:", lag_choice$reason, "\n")
+
+# Also show plain retention and interaction signal by lag.
+lag_scorecard <- overall_metrics_df %>%
+    group_by(t) %>%
+    summarise(
+        mean_n_obs = mean(n_obs, na.rm = TRUE),
+        mean_abs_interaction_t = mean(abs(interaction_t), na.rm = TRUE),
+        mean_interaction_p = mean(interaction_p, na.rm = TRUE),
+        .groups = "drop"
+    ) %>%
+    mutate(retention_vs_best = mean_n_obs / max(mean_n_obs, na.rm = TRUE))
+
+kable(lag_scorecard, digits = 4)
+```
+
+## Step 3: Interpretable moderation outputs (overall, recommended `t`)
+
+```{r interpret_overall}
+overall_metrics_t <- overall_metrics_df %>%
+    filter(t == recommended_t)
+
+overall_marginals_t <- overall_marginals_df %>%
+    filter(t == recommended_t)
+
+overall_thresholds_t <- overall_thresholds_df %>%
+    filter(t == recommended_t)
+
+cat("### Model summary at recommended lag\n")
+kable(overall_metrics_t, digits = 4)
+cat("\n### Fragmentation marginal effects at capacity quantiles\n")
+kable(overall_marginals_t, digits = 4)
+cat("\n### Sign-switch capacity threshold\n")
+kable(overall_thresholds_t, digits = 4)
+```
+
+```{r marginal_effect_plot, fig.height=5, fig.width=9}
+plot_data <- overall_curves_df %>%
+    filter(t == recommended_t)
+
+ggplot(
+    plot_data,
+    aes(
+        x = capacity_value,
+        y = frag_marginal_effect,
+        color = admin,
+        fill = admin
+    )
+) +
+    geom_ribbon(
+        aes(ymin = conf_low, ymax = conf_high),
+        alpha = 0.15,
+        color = NA
+    ) +
+    geom_line(linewidth = 1) +
+    geom_hline(yintercept = 0, linetype = "dashed") +
+    labs(
+        title = paste0(
+            "Marginal effect of fragmentation by baseline capacity (",
+            window_label,
+            ")"
+        ),
+        subtitle = paste0("Recommended lag t = ", recommended_t),
+        x = "Baseline capacity",
+        y = "d(growth)/d(fragmentation)"
+    ) +
+    theme_minimal(base_size = 12)
+```
+
+## Step 3B: Sensitivity moderator (lagged time-varying governance)
+
+```{r lagged_governance_sensitivity}
+extract_timevarying_terms <- function(fit_obj) {
+    model <- fit_obj$model
+    ct <- fixest::coeftable(model)
+    int_name <- get_term_name(model, c("frag_lag:gov_lag_c", "gov_lag_c:frag_lag"))
+    frag_name <- get_term_name(model, c("frag_lag"))
+
+    tibble(
+        admin = fit_obj$admin,
+        t = fit_obj$t,
+        n_obs = nobs(model),
+        fe_term = fit_obj$fe_term,
+        frag_estimate = if (!is.na(frag_name)) ct[frag_name, 1] else NA_real_,
+        frag_se = if (!is.na(frag_name)) ct[frag_name, 2] else NA_real_,
+        interaction_estimate = if (!is.na(int_name)) ct[int_name, 1] else NA_real_,
+        interaction_se = if (!is.na(int_name)) ct[int_name, 2] else NA_real_,
+        interaction_p = if (!is.na(int_name)) ct[int_name, 4] else NA_real_
+    )
+}
+
+timevarying_fits <- list(
+    fit_timevarying_model(
+        admin_specs$admin1$overall_data,
+        admin_specs$admin1,
+        recommended_t
+    ),
+    fit_timevarying_model(
+        admin_specs$admin2$overall_data,
+        admin_specs$admin2,
+        recommended_t
+    )
+)
+
+timevarying_terms <- bind_rows(lapply(timevarying_fits, extract_timevarying_terms))
+
+readr::write_csv(
+    timevarying_terms,
+    here::here(
+        "03_output",
+        "tabs",
+        paste0("lag_strategy_timevarying_sensitivity", panel_suffix, ".csv")
+    )
+)
+
+kable(timevarying_terms, digits = 4)
+```
+
+## Step 4: Sector models at recommended `t`
+
+```{r sector_models}
+sector_results <- list()
+sector_marginals <- list()
+
+for (nm in names(admin_specs)) {
+    spec <- admin_specs[[nm]]
+    sectors <- sort(unique(spec$sector_data$study_group))
+
+    for (sec in sectors) {
+        sec_data <- spec$sector_data %>% filter(study_group == sec)
+
+        fit_obj <- tryCatch(
+            fit_main_model(sec_data, spec, recommended_t, stage = "sector"),
+            error = function(e) NULL
+        )
+
+        if (is.null(fit_obj)) {
+            next
+        }
+
+        key <- paste(spec$admin_label, sec, sep = "_")
+        sector_results[[key]] <- extract_main_metrics(fit_obj) %>%
+            mutate(study_group = sec)
+        sector_marginals[[key]] <- marginal_effects_at_quantiles(fit_obj) %>%
+            mutate(study_group = sec)
+    }
+}
+
+sector_results_df <- bind_rows(sector_results) %>%
+    select(study_group, everything())
+
+sector_marginals_df <- bind_rows(sector_marginals) %>%
+    select(study_group, everything())
+
+readr::write_csv(
+    sector_results_df,
+    here::here(
+        "03_output",
+        "tabs",
+        paste0(
+            "lag_strategy_sector_metrics_t",
+            recommended_t,
+            panel_suffix,
+            ".csv"
+        )
+    )
+)
+readr::write_csv(
+    sector_marginals_df,
+    here::here(
+        "03_output",
+        "tabs",
+        paste0(
+            "lag_strategy_sector_marginals_t",
+            recommended_t,
+            panel_suffix,
+            ".csv"
+        )
+    )
+)
+
+kable(sector_results_df, digits = 4)
+```
+
+## Step 5: Placebo test (future fragmentation)
+
+```{r placebo_test}
+placebo_df <- bind_rows(
+    fit_placebo(
+        admin_specs$admin1$overall_data,
+        admin_specs$admin1,
+        recommended_t
+    ),
+    fit_placebo(
+        admin_specs$admin2$overall_data,
+        admin_specs$admin2,
+        recommended_t
+    )
+)
+
+readr::write_csv(
+    placebo_df,
+    here::here(
+        "03_output",
+        "tabs",
+        paste0("lag_strategy_placebo", panel_suffix, ".csv")
+    )
+)
+
+kable(placebo_df, digits = 4)
+```
+
+## FE fallback log
+
+```{r fe_fallback}
+if (nrow(fe_fallback_log) == 0) {
+    cat("No FE fallback events were triggered.")
+} else {
+    kable(fe_fallback_log, digits = 3)
+}
+```
+
+## Advisor note on a reasonable `t`
+
+- If this is **annual data**, use `t=1` as baseline for identification and interpretability, and treat `t=2,3` as persistence checks.
+- If this is **5-year data**, `t=1` is effectively a 5-year lag and is the practical baseline.
+- In the 2000-2020 five-year design, primary growth models drop transitions involving the singleton 2020 bucket.
+- A "reasonable" `t` is the one that balances:
+  - signal (interaction effect not vanishing)
+  - sample retention
+  - temporal plausibility for the outcome mechanism
+
+This file gives all three directly so you can defend your choice in the chapter.

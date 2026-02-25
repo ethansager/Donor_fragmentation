@@ -10,7 +10,7 @@ pacman::p_load(
 
 # get country isos for gadm
 countries_iso3 <- read_csv(
-    "00_rawdata/nightlights/topcodefix/processed_topcodefix_nl_admin2.csv"
+    "00_rawdata/nightlights/processed/processed_topcodefix_nl_admin2.csv"
 ) %>%
     select(GID_0) %>%
     distinct() %>%

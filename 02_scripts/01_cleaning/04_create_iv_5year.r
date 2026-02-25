@@ -24,7 +24,8 @@ END_YEAR <- cfg$end_year
 PANEL_TAG <- cfg$panel_tag
 ALLOW_SYNTHETIC_EXTENSION <- tolower(
   Sys.getenv("ALLOW_SYNTHETIC_EXTENSION", unset = "false")
-) %in% c("1", "true", "yes", "y")
+) %in%
+  c("1", "true", "yes", "y")
 
 extract_years_from_paths <- function(paths) {
   extracted <- gsub(".*?(\\d{4}).*", "\\1", basename(paths))
@@ -36,8 +37,16 @@ extract_years_from_paths <- function(paths) {
 # Data readiness gate
 # -----------------------------------------------------------------------------
 nightlight_years <- c(
-  list.files(here("00_rawdata", "nightlights", "africa"), pattern = "\\.tif$", full.names = TRUE),
-  list.files(here("00_rawdata", "nightlights", "topcodefix"), pattern = "^DMSP.*\\.tif$", full.names = TRUE)
+  list.files(
+    here("00_rawdata", "nightlights", "africa"),
+    pattern = "\\.tif$",
+    full.names = TRUE
+  ),
+  list.files(
+    here("00_rawdata", "nightlights", "topcodefix"),
+    pattern = "^DMSP.*\\.tif$",
+    full.names = TRUE
+  )
 ) %>%
   extract_years_from_paths()
 print_year_support("Nightlights raster year support", nightlight_years)
@@ -97,7 +106,7 @@ if (!all(c(2005L, 2015L) %in% admin2_afro_years)) {
 
 # Get country isos for gadm
 countries_iso3 <- read_csv(
-  "00_rawdata/nightlights/topcodefix/processed_topcodefix_nl_admin2.csv",
+  "00_rawdata/nightlights/processed/processed_topcodefix_nl_admin2.csv",
   show_col_types = FALSE
 ) %>%
   select(GID_0) %>%
@@ -180,7 +189,10 @@ aid_data <- dat[,
   by = .(GID_0, GID_1, GID_2, year, donor)
 ]
 
-frac_data_annual <- read_csv("00_rawdata/DPI2020.csv", show_col_types = FALSE) %>%
+frac_data_annual <- read_csv(
+  "00_rawdata/DPI2020.csv",
+  show_col_types = FALSE
+) %>%
   mutate(
     countryname = str_replace(countryname, "USA", "United States"),
     countryname = str_replace(countryname, "UK", "United Kingdom"),
@@ -191,7 +203,9 @@ frac_data_annual <- read_csv("00_rawdata/DPI2020.csv", show_col_types = FALSE) %
       govfrac
     )
   ) %>%
-  filter(countryname %in% donor_countries & year >= START_YEAR & year <= END_YEAR) %>%
+  filter(
+    countryname %in% donor_countries & year >= START_YEAR & year <= END_YEAR
+  ) %>%
   select(donor = countryname, year, frac_full)
 
 print_year_support("DPI fractionalization support", frac_data_annual$year)
@@ -201,7 +215,10 @@ assert_year_coverage(
   START_YEAR:END_YEAR
 )
 
-votes <- read_csv("00_rawdata/pdfs/wb_vote_shares.csv", show_col_types = FALSE) %>%
+votes <- read_csv(
+  "00_rawdata/pdfs/wb_vote_shares.csv",
+  show_col_types = FALSE
+) %>%
   mutate(
     Country = str_replace(Country, "USA", "United States"),
     Country = str_replace(Country, "UK", "United Kingdom")
@@ -236,11 +253,11 @@ frac_data <- bind_rows(frac_data_annual, votes) %>%
   summarise(frac_full = mean(frac_full, na.rm = TRUE), .groups = "drop")
 
 construct_shift_share_iv_bucketed <- function(
-    aid_data,
-    frac_data,
-    panel_data,
-    region_id,
-    aid_threshold = 0
+  aid_data,
+  frac_data,
+  panel_data,
+  region_id,
+  aid_threshold = 0
 ) {
   periods <- sort(unique(panel_data$year))
 

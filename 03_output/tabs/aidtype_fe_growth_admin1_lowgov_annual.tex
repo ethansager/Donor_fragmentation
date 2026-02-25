@@ -1,0 +1,32 @@
+
+\begin{table}[H]
+   \caption{Table 2B. FE Growth Models by Aid Type: Admin1, Low Governance [5-year panel; Annual periods]}
+   \centering
+   \begin{tabular}{lcccccc}
+      \tabularnewline \midrule \midrule
+      Dependent Variable: & \multicolumn{6}{c}{nl\_growth}\\
+                         & educ         & gov\_support  & health   & humanitarian & infra        & other \\   
+      Model:             & (1)          & (2)           & (3)      & (4)          & (5)          & (6)\\  
+      \midrule
+      \emph{Variables}\\
+      Lag Fragmentation  & 0.5903       & 0.5918        & -0.3410  & 2.667        & 0.0921       & -2.784\\   
+                         & (1.439)      & (0.8990)      & (1.167)  & (2.020)      & (1.129)      & (11.67)\\   
+      Lag LN(Total Aid)  & 0.0108       & -0.0574       & 0.0171   & 0.1519       & 0.0774       & -0.0033\\   
+                         & (0.1194)     & (0.0933)      & (0.1506) & (0.1507)     & (0.0990)     & (0.6526)\\   
+      Lag LN(Population) & 18.91$^{**}$ & 7.501$^{*}$   & 9.755    & 8.696        & 8.786$^{**}$ & 1.234\\   
+                         & (7.724)      & (4.003)       & (6.370)  & (6.335)      & (3.782)      & (87.57)\\   
+      \midrule
+      \emph{Fixed-effects}\\
+      GID\_0-year        & Yes          & Yes           & Yes      & Yes          & Yes          & Yes\\  
+      GID\_1             & Yes          & Yes           & Yes      & Yes          & Yes          & Yes\\  
+      \midrule
+      \emph{Fit statistics}\\
+      Observations       & 1,038        & 2,050         & 1,752    & 393          & 1,941        & 184\\  
+      R$^2$              & 0.55487      & 0.39384       & 0.42795  & 0.71482      & 0.38650      & 0.72877\\  
+      \midrule \midrule
+      \multicolumn{7}{l}{\emph{Clustered (GID\_0) standard-errors in parentheses}}\\
+      \multicolumn{7}{l}{\emph{Signif. Codes: ***: 0.01, **: 0.05, *: 0.1}}\\
+   \end{tabular}
+\end{table}
+
+

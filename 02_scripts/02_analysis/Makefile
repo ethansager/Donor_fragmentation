@@ -27,7 +27,7 @@ regressions: $(PANEL_DATA_MAIN)
 	cd ../.. && $(RSCRIPT) 02_scripts/02_analysis/05_run_regressions.R
 
 # Generate tables from regression results
-tables: regressions $(PANEL_DATA_MAIN)
+tables: regressions
 	@echo "Generating regression tables..."
 	cd ../.. && $(RSCRIPT) 02_scripts/02_analysis/06_new_regressions.R
 

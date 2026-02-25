@@ -1,0 +1,34 @@
+
+\begin{table}[H]
+   \caption{Table 3A. CFA Growth Models by Aid Type: Admin1, High Governance [5-year panel; Annual periods]}
+   \centering
+   \begin{tabular}{lccccc}
+      \tabularnewline \midrule \midrule
+      Dependent Variable: & \multicolumn{5}{c}{nl\_growth}\\
+                         & educ                    & gov\_support            & health                  & humanitarian            & infra \\   
+      Model:             & (1)                     & (2)                     & (3)                     & (4)                     & (5)\\  
+      \midrule
+      \emph{Variables}\\
+      Lag Fragmentation  & 2.603$^{**}$            & -1.363$^{***}$          & 0.0050                  & -0.0620                 & 1.401$^{**}$\\   
+                         & (1.151)                 & (0.3861)                & (1.161)                 & (2.851)                 & (0.6558)\\   
+      Lag LN(Total Aid)  & 0.3231$^{***}$          & -0.1635                 & 0.0873                  & -0.1850                 & 0.1875$^{***}$\\   
+                         & (0.0485)                & (0.0949)                & (0.1269)                & (0.1257)                & (0.0439)\\   
+      Lag LN(Population) & 11.61                   & 17.73$^{**}$            & 15.37$^{*}$             & 77.93$^{***}$           & 9.024\\   
+                         & (11.14)                 & (6.969)                 & (8.040)                 & (19.46)                 & (6.466)\\   
+      CFA Residual       & $5.16\times 10^{-8}$    & $-5.61\times 10^{-8}$   & $9.37\times 10^{-8}$    & $-5.42\times 10^{-8}$   & $-2.53\times 10^{-9}$\\    
+                         & ($2.05\times 10^{-7}$)  & ($7.86\times 10^{-8}$)  & ($9.11\times 10^{-8}$)  & ($1.05\times 10^{-7}$)  & ($1.63\times 10^{-8}$)\\    
+      \midrule
+      \emph{Fixed-effects}\\
+      GID\_0-year        & Yes                     & Yes                     & Yes                     & Yes                     & Yes\\  
+      GID\_1             & Yes                     & Yes                     & Yes                     & Yes                     & Yes\\  
+      \midrule
+      \emph{Fit statistics}\\
+      Observations       & 364                     & 696                     & 561                     & 116                     & 682\\  
+      R$^2$              & 0.60406                 & 0.55927                 & 0.61677                 & 0.86101                 & 0.56778\\  
+      \midrule \midrule
+      \multicolumn{6}{l}{\emph{Clustered (GID\_0) standard-errors in parentheses}}\\
+      \multicolumn{6}{l}{\emph{Signif. Codes: ***: 0.01, **: 0.05, *: 0.1}}\\
+   \end{tabular}
+\end{table}
+
+
