@@ -32,7 +32,8 @@ pacman::p_load(
     modelsummary,
     kableExtra,
     gt,
-    patchwork
+    patchwork,
+    interflex
 )
 
 # ── Data prep helpers (mirrors 09_fresh_analysis.r) ─────────────────────────
@@ -492,6 +493,41 @@ DICT <- c(
     sgq_std = "Gov. Quality (std.)"
 )
 SIG <- c("***" = 0.01, "**" = 0.05, "*" = 0.1)
+
+# ── Interflex: non-parametric binning estimator ───────────────────────────────
+ifl_dat_a1 <- panel_a1 |>
+    filter(
+        is.finite(nl_growth), is.finite(lag_frag), is.finite(log_lag_nl),
+        is.finite(lag_total_aid), is.finite(lag_log_pop), is.finite(mean_sgq_admin1)
+    ) |>
+    as.data.frame()
+
+ifl_dat_a2 <- panel_a2 |>
+    filter(
+        is.finite(nl_growth), is.finite(lag_frag), is.finite(log_lag_nl),
+        is.finite(lag_total_aid), is.finite(lag_log_pop), is.finite(mean_sgq_admin2)
+    ) |>
+    as.data.frame()
+
+out_bin_a1 <- interflex(
+    estimator = "binning",
+    data      = ifl_dat_a1,
+    Y = "nl_growth", D = "lag_frag", X = "mean_sgq_admin1",
+    Z = c("lag_total_aid", "lag_log_pop", "log_lag_nl"),
+    FE = "GID_0", cl = "GID_0",
+    vcov.type = "cluster", vartype = "delta",
+    nbins = 3, parallel = FALSE, figure = FALSE
+)
+
+out_bin_a2 <- interflex(
+    estimator = "binning",
+    data      = ifl_dat_a2,
+    Y = "nl_growth", D = "lag_frag", X = "mean_sgq_admin2",
+    Z = c("lag_total_aid", "lag_log_pop", "log_lag_nl"),
+    FE = "GID_0", cl = "GID_0",
+    vcov.type = "cluster", vartype = "delta",
+    nbins = 3, parallel = FALSE, figure = FALSE
+)
 ```
 
 # Research Question
@@ -888,6 +924,82 @@ panel_a1 |>
 3. **The continuous interaction contradicts the binary split.** Both use the same SGQ variable. The interaction says more governance = less harm; the binary split says the top quartile suffers more. These cannot both be right as statements about governance quality. The resolution: the 75th percentile cut is capturing region composition, not governance channel.
 
 **Bottom line:** governance quality appears to *mitigate* fragmentation harm (positive interaction), but the effect is statistically weak. The binary split result should not be interpreted as a clean heterogeneity finding. The paper should lead with the continuous interaction and note the binary split inconsistency in a footnote.
+
+## Non-parametric check: Interflex binning
+
+The continuous interaction imposes a linearity assumption — the marginal effect of fragmentation changes linearly with governance quality. Hainmueller, Mummolo, and Xu (2019) show that this assumption often fails in practice. The **binning estimator** relaxes it: it estimates separate marginal effects within three bins of the moderator (low, mid, high SGQ), then tests whether those estimates are jointly consistent with the linear interaction (Wald test).
+
+```{r interflex-a1}
+#| fig-cap: "Admin1 (province): Marginal effect of fragmentation on NL growth across governance quality bins. Binning estimator with country FE and clustered SE. Dots = bin-specific estimates; line = linear interaction from parametric model; histogram = distribution of SGQ."
+#| fig-height: 5
+
+plot(
+    out_bin_a1,
+    ylab    = "Marginal Effect of Frag. on NL Growth",
+    xlab    = "State Governance Quality (SGQ)",
+    main    = NULL,
+    theme.bw = TRUE
+)
+```
+
+```{r interflex-a2}
+#| fig-cap: "Admin2 (district): Same specification. Note the sign flip across governance bins — low-governance districts show negative fragmentation effects; mid/high-governance districts show positive effects."
+#| fig-height: 5
+
+plot(
+    out_bin_a2,
+    ylab    = "Marginal Effect of Frag. on NL Growth",
+    xlab    = "State Governance Quality (SGQ)",
+    main    = NULL,
+    theme.bw = TRUE
+)
+```
+
+```{r interflex-summary}
+#| tbl-cap: "Interflex binning summary: bin-level marginal effects and Wald test of linearity assumption."
+
+# Extract bin estimates (est.bin[[1]] is a matrix)
+get_bins <- function(out, sgq_var) {
+    b <- as.data.frame(out$est.bin[[1]])
+    data.frame(
+        Level    = sgq_var,
+        Bin      = rownames(b),
+        Midpoint = round(b[, "x0"],       1),
+        ME       = round(b[, "coef"],     3),
+        SE       = round(b[, "sd"],       3),
+        CI_lo    = round(b[, "CI.lower"], 2),
+        CI_hi    = round(b[, "CI.upper"], 2)
+    )
+}
+
+bind_rows(
+    get_bins(out_bin_a1, "Admin1 (Province)"),
+    get_bins(out_bin_a2, "Admin2 (District)")
+) |>
+    gt(groupname_col = "Level") |>
+    cols_label(
+        Bin = "SGQ Bin", Midpoint = "Bin midpoint",
+        ME = "Marginal Effect", SE = "(SE)",
+        CI_lo = "95% CI lower", CI_hi = "95% CI upper"
+    ) |>
+    tab_header(title = "Interflex Binning Estimates by Admin Level") |>
+    tab_footnote(paste(
+        "Admin1 Wald test p =", out_bin_a1$tests$p.wald,
+        "| Admin2 Wald test p =", out_bin_a2$tests$p.wald,
+        "| Null: binning consistent with linear interaction."
+    )) |>
+    tab_style(style = cell_text(weight = "bold"), locations = cells_column_labels()) |>
+    tab_style(style = cell_text(weight = "bold"), locations = cells_row_groups()) |>
+    opt_stylize(style = 1)
+```
+
+**What the interflex results say:**
+
+At **admin1 (province)**, all three governance bins show negative marginal effects of fragmentation on NL growth, ranging from `r round(as.data.frame(out_bin_a1$est.bin[[1]])[1,"coef"],2)` (low SGQ) to `r round(as.data.frame(out_bin_a1$est.bin[[1]])[3,"coef"],2)` (high SGQ). The Wald test (p = `r out_bin_a1$tests$p.wald`) cannot reject the linear interaction assumption, but the bin-level estimates do not show the clear mitigating pattern the parametric model suggests — if anything, more harm in mid/high-governance bins (though all estimates are noisy). The implication: at the provincial level, the coordination burden falls on the government office regardless of governance quality. Even well-governed provinces face the same bandwidth constraint when managing many donors.
+
+At **admin2 (district)**, the governance gradient is sharper and more interpretable: low-SGQ districts show negative effects (`r round(as.data.frame(out_bin_a2$est.bin[[1]])[1,"coef"],2)`), while mid and high-SGQ districts show positive effects (+`r round(as.data.frame(out_bin_a2$est.bin[[1]])[2,"coef"],2)`, +`r round(as.data.frame(out_bin_a2$est.bin[[1]])[3,"coef"],2)`). The Wald test (p = `r out_bin_a2$tests$p.wald`) cannot reject linearity, but the pattern is clear: governance quality matters at the district level for whether project diversity (fragmentation) becomes a coordination failure or a complementary benefit. Poorly-governed districts cannot integrate diverse donor projects; better-governed districts can.
+
+This reinforces the scale narrative: the coordination bottleneck is at the **province** (uniform harm regardless of governance) while district-level outcomes depend on whether local implementers have the capacity to absorb diversity.
 
 # Health Outcomes: Under-5 Mortality
 
