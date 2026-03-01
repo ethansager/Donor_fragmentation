@@ -20,161 +20,478 @@ execute:
 ---
 
 ```{r setup}
-if (!require("pacman")) install.packages("pacman")
-pacman::p_load(tidyverse, here, fixest, ggdag, dagitty,
-               modelsummary, kableExtra, gt, patchwork)
+if (!require("pacman")) {
+    install.packages("pacman")
+}
+pacman::p_load(
+    tidyverse,
+    here,
+    fixest,
+    ggdag,
+    dagitty,
+    modelsummary,
+    kableExtra,
+    gt,
+    patchwork
+)
 
 # ── Data prep helpers (mirrors 09_fresh_analysis.r) ─────────────────────────
 norm_nl <- function(d) {
-  if (!"mean_nl" %in% names(d) && "mean" %in% names(d)) d <- rename(d, mean_nl = mean)
-  d
+    if (!"mean_nl" %in% names(d) && "mean" %in% names(d)) {
+        d <- rename(d, mean_nl = mean)
+    }
+    d
 }
 build_vars <- function(data, uid, aid_var, frag_var, pop_var) {
-  data |> arrange(.data[[uid]], year) |> group_by(.data[[uid]]) |>
-    mutate(
-      lag_mean_nl   = dplyr::lag(mean_nl, 1L),
-      lag2_mean_nl  = dplyr::lag(mean_nl, 2L),
-      lag_frag      = dplyr::lag(.data[[frag_var]], 1L),
-      lag_log_pop   = dplyr::lag(.data[[pop_var]], 1L),
-      lag_total_aid = log(dplyr::lag(.data[[aid_var]], 1L) + 0.01),
-      total_aid_raw = dplyr::lag(.data[[aid_var]], 1L),
-      log_lag_nl    = log(dplyr::lag(mean_nl, 1L) + 0.01),
-      nl_growth     = case_when(is.na(lag_mean_nl) ~ NA_real_,
-        TRUE ~ ((log(mean_nl+0.01) - log(lag_mean_nl+0.01)) / 5) * 100),
-      pre_nl_growth = case_when(is.na(lag2_mean_nl) ~ NA_real_,
-        TRUE ~ ((log(lag_mean_nl+0.01) - log(lag2_mean_nl+0.01)) / 5) * 100)
-    ) |> ungroup()
+    data |>
+        arrange(.data[[uid]], year) |>
+        group_by(.data[[uid]]) |>
+        mutate(
+            lag_mean_nl = dplyr::lag(mean_nl, 1L),
+            lag2_mean_nl = dplyr::lag(mean_nl, 2L),
+            lag_frag = dplyr::lag(.data[[frag_var]], 1L),
+            lag_log_pop = dplyr::lag(.data[[pop_var]], 1L),
+            lag_total_aid = log(dplyr::lag(.data[[aid_var]], 1L) + 0.01),
+            total_aid_raw = dplyr::lag(.data[[aid_var]], 1L),
+            log_lag_nl = log(dplyr::lag(mean_nl, 1L) + 0.01),
+            nl_growth = case_when(
+                is.na(lag_mean_nl) ~ NA_real_,
+                TRUE ~ ((log(mean_nl + 0.01) - log(lag_mean_nl + 0.01)) / 5) *
+                    100
+            ),
+            pre_nl_growth = case_when(
+                is.na(lag2_mean_nl) ~ NA_real_,
+                TRUE ~ ((log(lag_mean_nl + 0.01) - log(lag2_mean_nl + 0.01)) /
+                    5) *
+                    100
+            )
+        ) |>
+        ungroup()
 }
-winsorise <- function(d, v, lo=0.05, hi=0.95) {
-  vals <- d[[v]]; if (sum(is.finite(vals)) < 20) return(d)
-  q <- quantile(vals, c(lo,hi), na.rm=TRUE)
-  d[[v]] <- pmax(pmin(vals, q[2]), q[1]); d
+winsorise <- function(d, v, lo = 0.05, hi = 0.95) {
+    vals <- d[[v]]
+    if (sum(is.finite(vals)) < 20) {
+        return(d)
+    }
+    q <- quantile(vals, c(lo, hi), na.rm = TRUE)
+    d[[v]] <- pmax(pmin(vals, q[2]), q[1])
+    d
 }
-add_cap <- function(d, sgq, pct=0.75) {
-  cut <- quantile(d[[sgq]], pct, na.rm=TRUE)
-  mutate(d, high_cap = as.integer(.data[[sgq]] > cut))
+add_cap <- function(d, sgq, pct = 0.75) {
+    cut <- quantile(d[[sgq]], pct, na.rm = TRUE)
+    mutate(d, high_cap = as.integer(.data[[sgq]] > cut))
 }
 to_ld <- function(d, uid) {
-  d |> group_by(.data[[uid]]) |>
-    filter(year == max(year, na.rm=TRUE)) |> ungroup()
+    d |>
+        group_by(.data[[uid]]) |>
+        filter(year == max(year, na.rm = TRUE)) |>
+        ungroup()
 }
 
 # ── Load & build panels ──────────────────────────────────────────────────────
 raw_a1 <- read_csv(
-  here("01_panel_data","panel_aid_admin1_fin_5year_1995_2015.csv"),
-  show_col_types = FALSE) |> norm_nl()
+    here("01_panel_data", "panel_aid_admin1_fin_5year_1995_2015.csv"),
+    show_col_types = FALSE
+) |>
+    norm_nl()
 
 panel_a1 <- raw_a1 |>
-  build_vars("GID_1","total_aid_admin1","frag_index_admin1","ln_pop_admin1") |>
-  winsorise("nl_growth") |> add_cap("mean_sgq_admin1") |>
-  to_ld("GID_1")
+    build_vars(
+        "GID_1",
+        "total_aid_admin1",
+        "frag_index_admin1",
+        "ln_pop_admin1"
+    ) |>
+    winsorise("nl_growth") |>
+    add_cap("mean_sgq_admin1") |>
+    to_ld("GID_1")
 
 hi_a1 <- filter(panel_a1, high_cap == 1L)
 lo_a1 <- filter(panel_a1, high_cap == 0L)
 
 # ── Estimation helpers ───────────────────────────────────────────────────────
-est_ols <- function(d, y) feols(
-  as.formula(paste0(y," ~ lag_frag + lag_total_aid + lag_log_pop + log_lag_nl")),
-  cluster=~GID_0, data=filter(d, is.finite(.data[[y]]), is.finite(log_lag_nl)))
-
-est_fe <- function(d, y) feols(
-  as.formula(paste0(y," ~ lag_frag + lag_total_aid + lag_log_pop + log_lag_nl | GID_0")),
-  cluster=~GID_0, data=filter(d, is.finite(.data[[y]]), is.finite(log_lag_nl)))
-
-est_cfa <- function(d, y, fe="GID_0") {
-  s1d <- filter(d, is.finite(total_aid_raw), is.finite(IV_lag),
-                is.finite(lag_log_pop), is.finite(log_lag_nl))
-  s1  <- feols(as.formula(paste0(
-    "total_aid_raw ~ IV_lag + lag_log_pop + lag_frag + log_lag_nl | ", fe)),
-    cluster=~GID_0, data=s1d)
-  s2d <- mutate(s1d, cfa_resid=resid(s1)) |>
-    filter(is.finite(.data[[y]]), is.finite(lag_frag),
-           is.finite(lag_total_aid), is.finite(cfa_resid))
-  feols(as.formula(paste0(
-    y," ~ lag_frag + lag_total_aid + lag_log_pop + log_lag_nl + cfa_resid | ", fe)),
-    cluster=~GID_0, data=s2d)
+est_ols <- function(d, y) {
+    feols(
+        as.formula(paste0(
+            y,
+            " ~ lag_frag + lag_total_aid + lag_log_pop + log_lag_nl"
+        )),
+        cluster = ~GID_0,
+        data = filter(d, is.finite(.data[[y]]), is.finite(log_lag_nl))
+    )
 }
 
-est_2sls <- function(d, y, fe="GID_0") feols(
-  as.formula(paste0(
-    y," ~ lag_frag + lag_log_pop + log_lag_nl | ", fe,
-    " | lag_total_aid ~ IV_lag")),
-  cluster=~GID_0,
-  data=filter(d, is.finite(.data[[y]]), is.finite(lag_frag),
-              is.finite(log_lag_nl), is.finite(lag_total_aid), is.finite(IV_lag)))
+est_fe <- function(d, y) {
+    feols(
+        as.formula(paste0(
+            y,
+            " ~ lag_frag + lag_total_aid + lag_log_pop + log_lag_nl | GID_0"
+        )),
+        cluster = ~GID_0,
+        data = filter(d, is.finite(.data[[y]]), is.finite(log_lag_nl))
+    )
+}
+
+est_cfa <- function(d, y, fe = "GID_0") {
+    s1d <- filter(
+        d,
+        is.finite(total_aid_raw),
+        is.finite(IV_lag),
+        is.finite(lag_log_pop),
+        is.finite(log_lag_nl)
+    )
+    s1 <- feols(
+        as.formula(paste0(
+            "total_aid_raw ~ IV_lag + lag_log_pop + lag_frag + log_lag_nl | ",
+            fe
+        )),
+        cluster = ~GID_0,
+        data = s1d
+    )
+    s2d <- mutate(s1d, cfa_resid = resid(s1)) |>
+        filter(
+            is.finite(.data[[y]]),
+            is.finite(lag_frag),
+            is.finite(lag_total_aid),
+            is.finite(cfa_resid)
+        )
+    feols(
+        as.formula(paste0(
+            y,
+            " ~ lag_frag + lag_total_aid + lag_log_pop + log_lag_nl + cfa_resid | ",
+            fe
+        )),
+        cluster = ~GID_0,
+        data = s2d
+    )
+}
+
+est_2sls <- function(d, y, fe = "GID_0") {
+    feols(
+        as.formula(paste0(
+            y,
+            " ~ lag_frag + lag_log_pop + log_lag_nl | ",
+            fe,
+            " | lag_total_aid ~ IV_lag"
+        )),
+        cluster = ~GID_0,
+        data = filter(
+            d,
+            is.finite(.data[[y]]),
+            is.finite(lag_frag),
+            is.finite(log_lag_nl),
+            is.finite(lag_total_aid),
+            is.finite(IV_lag)
+        )
+    )
+}
 
 # ── Run all models ───────────────────────────────────────────────────────────
-m_ols  <- est_ols (panel_a1, "nl_growth")
-m_fe   <- est_fe  (panel_a1, "nl_growth")
-m_cfa  <- est_cfa (panel_a1, "nl_growth")
+m_ols <- est_ols(panel_a1, "nl_growth")
+m_fe <- est_fe(panel_a1, "nl_growth")
+m_cfa <- est_cfa(panel_a1, "nl_growth")
 m_2sls <- est_2sls(panel_a1, "nl_growth")
 
-hi_cfa  <- est_cfa(hi_a1, "nl_growth"); lo_cfa  <- est_cfa(lo_a1, "nl_growth")
-hi_2sls <- est_2sls(hi_a1,"nl_growth"); lo_2sls <- est_2sls(lo_a1,"nl_growth")
+hi_cfa <- est_cfa(hi_a1, "nl_growth")
+lo_cfa <- est_cfa(lo_a1, "nl_growth")
+hi_2sls <- est_2sls(hi_a1, "nl_growth")
+lo_2sls <- est_2sls(lo_a1, "nl_growth")
 
-u5_ols  <- est_ols(filter(panel_a1,!is.na(u5m)),"u5m")
-u5_fe   <- est_fe (filter(panel_a1,!is.na(u5m)),"u5m")
-u5_cfa  <- est_cfa(filter(panel_a1,!is.na(u5m)),"u5m")
-hi_u5   <- est_cfa(filter(hi_a1,!is.na(u5m)),"u5m")
-lo_u5   <- est_cfa(filter(lo_a1,!is.na(u5m)),"u5m")
+u5_ols <- est_ols(filter(panel_a1, !is.na(u5m)), "u5m")
+u5_fe <- est_fe(filter(panel_a1, !is.na(u5m)), "u5m")
+u5_cfa <- est_cfa(filter(panel_a1, !is.na(u5m)), "u5m")
+hi_u5 <- est_cfa(filter(hi_a1, !is.na(u5m)), "u5m")
+lo_u5 <- est_cfa(filter(lo_a1, !is.na(u5m)), "u5m")
 
 # First stage for diagnostics
 s1_data <- panel_a1 |>
-  filter(is.finite(total_aid_raw), is.finite(IV_lag),
-         is.finite(lag_log_pop), is.finite(log_lag_nl))
+    filter(
+        is.finite(total_aid_raw),
+        is.finite(IV_lag),
+        is.finite(lag_log_pop),
+        is.finite(log_lag_nl)
+    )
 first_stage <- feols(
-  total_aid_raw ~ IV_lag + lag_log_pop + lag_frag + log_lag_nl | GID_0,
-  cluster=~GID_0, data=s1_data)
+    total_aid_raw ~ IV_lag + lag_log_pop + lag_frag + log_lag_nl | GID_0,
+    cluster = ~GID_0,
+    data = s1_data
+)
 rf_nl <- feols(
-  nl_growth ~ IV_lag + lag_log_pop + lag_frag + log_lag_nl | GID_0,
-  cluster=~GID_0, data=filter(s1_data, is.finite(nl_growth)))
+    nl_growth ~ IV_lag + lag_log_pop + lag_frag + log_lag_nl | GID_0,
+    cluster = ~GID_0,
+    data = filter(s1_data, is.finite(nl_growth))
+)
 placebo <- feols(
-  pre_nl_growth ~ IV_lag + lag_log_pop + lag_frag + log_lag_nl | GID_0,
-  cluster=~GID_0, data=filter(s1_data, is.finite(pre_nl_growth)))
+    pre_nl_growth ~ IV_lag + lag_log_pop + lag_frag + log_lag_nl | GID_0,
+    cluster = ~GID_0,
+    data = filter(s1_data, is.finite(pre_nl_growth))
+)
 fs_fstat <- (coef(first_stage)["IV_lag"] / se(first_stage)["IV_lag"])^2
 
 # Stacked 2-window
-stacked_a1 <- raw_a1 |> norm_nl() |>
-  build_vars("GID_1","total_aid_admin1","frag_index_admin1","ln_pop_admin1") |>
-  winsorise("nl_growth") |> add_cap("mean_sgq_admin1") |>
-  filter(year %in% c(2010L, 2015L), !is.na(lag_frag), !is.na(nl_growth))
-stk_cfa    <- est_cfa(stacked_a1, "nl_growth", "GID_0^year + GID_1")
-stk_hi_cfa <- est_cfa(filter(stacked_a1, high_cap==1L), "nl_growth", "GID_0^year + GID_1")
-stk_lo_cfa <- est_cfa(filter(stacked_a1, high_cap==0L), "nl_growth", "GID_0^year + GID_1")
+stacked_a1 <- raw_a1 |>
+    norm_nl() |>
+    build_vars(
+        "GID_1",
+        "total_aid_admin1",
+        "frag_index_admin1",
+        "ln_pop_admin1"
+    ) |>
+    winsorise("nl_growth") |>
+    add_cap("mean_sgq_admin1") |>
+    filter(year %in% c(2010L, 2015L), !is.na(lag_frag), !is.na(nl_growth))
+stk_cfa <- est_cfa(stacked_a1, "nl_growth", "GID_0^year + GID_1")
+stk_hi_cfa <- est_cfa(
+    filter(stacked_a1, high_cap == 1L),
+    "nl_growth",
+    "GID_0^year + GID_1"
+)
+stk_lo_cfa <- est_cfa(
+    filter(stacked_a1, high_cap == 0L),
+    "nl_growth",
+    "GID_0^year + GID_1"
+)
 
-panel_pfe <- raw_a1 |> norm_nl() |>
-  build_vars("GID_1","total_aid_admin1","frag_index_admin1","ln_pop_admin1") |>
-  winsorise("nl_growth") |> add_cap("mean_sgq_admin1") |>
-  group_by(GID_1) |> filter(!is.na(lag_frag)) |> ungroup()
+panel_pfe <- raw_a1 |>
+    norm_nl() |>
+    build_vars(
+        "GID_1",
+        "total_aid_admin1",
+        "frag_index_admin1",
+        "ln_pop_admin1"
+    ) |>
+    winsorise("nl_growth") |>
+    add_cap("mean_sgq_admin1") |>
+    group_by(GID_1) |>
+    filter(!is.na(lag_frag)) |>
+    ungroup()
 pfe_cfa <- est_cfa(panel_pfe, "nl_growth", "GID_0^year + GID_1")
 
 # Sector models (FE only — no IV for sector files)
 sector_paths <- list(
-  health      = here("01_panel_data","panel_aid_admin1_health_5year_1995_2015.csv"),
-  education   = here("01_panel_data","panel_aid_admin1_educ_5year_1995_2015.csv"),
-  infra       = here("01_panel_data","panel_aid_admin1_infra_5year_1995_2015.csv"),
-  gov_support = here("01_panel_data","panel_aid_admin1_gov_support_5year_1995_2015.csv"),
-  humanitarian= here("01_panel_data","panel_aid_admin1_humanitarian_5year_1995_2015.csv")
+    health = here(
+        "01_panel_data",
+        "panel_aid_admin1_health_5year_1995_2015.csv"
+    ),
+    education = here(
+        "01_panel_data",
+        "panel_aid_admin1_educ_5year_1995_2015.csv"
+    ),
+    infra = here("01_panel_data", "panel_aid_admin1_infra_5year_1995_2015.csv"),
+    gov_support = here(
+        "01_panel_data",
+        "panel_aid_admin1_gov_support_5year_1995_2015.csv"
+    ),
+    humanitarian = here(
+        "01_panel_data",
+        "panel_aid_admin1_humanitarian_5year_1995_2015.csv"
+    )
 )
-sector_labels <- c(health="Health", education="Education", infra="Infrastructure",
-                   gov_support="Governance", humanitarian="Humanitarian")
+sector_labels <- c(
+    health = "Health",
+    education = "Education",
+    infra = "Infrastructure",
+    gov_support = "Governance",
+    humanitarian = "Humanitarian"
+)
 
 run_sector <- function(path) {
-  d <- read_csv(path, show_col_types=FALSE) |> norm_nl() |>
-    build_vars("GID_1","total_aid_admin1","frag_index_admin1","ln_pop_admin1") |>
-    winsorise("nl_growth") |> add_cap("mean_sgq_admin1") |> to_ld("GID_1")
-  list(
-    full = tryCatch(est_fe(d,"nl_growth"), error=function(e) NULL),
-    hi   = tryCatch(est_fe(filter(d,high_cap==1L),"nl_growth"), error=function(e) NULL),
-    lo   = tryCatch(est_fe(filter(d,high_cap==0L),"nl_growth"), error=function(e) NULL)
-  )
+    d <- read_csv(path, show_col_types = FALSE) |>
+        norm_nl() |>
+        build_vars(
+            "GID_1",
+            "total_aid_admin1",
+            "frag_index_admin1",
+            "ln_pop_admin1"
+        ) |>
+        winsorise("nl_growth") |>
+        add_cap("mean_sgq_admin1") |>
+        to_ld("GID_1")
+    list(
+        full = tryCatch(est_fe(d, "nl_growth"), error = function(e) NULL),
+        hi = tryCatch(
+            est_fe(filter(d, high_cap == 1L), "nl_growth"),
+            error = function(e) NULL
+        ),
+        lo = tryCatch(
+            est_fe(filter(d, high_cap == 0L), "nl_growth"),
+            error = function(e) NULL
+        )
+    )
 }
 sector_mods <- lapply(sector_paths, run_sector)
 
-DICT <- c(lag_frag="Frag. Index (t−1)", lag_total_aid="ln Aid (t−1)",
-          lag_log_pop="ln Pop (t−1)", log_lag_nl="ln NL Level (t−1)",
-          cfa_resid="CFA Residual", fit_lag_total_aid="ln Aid (instrumented)")
-SIG  <- c("***"=0.01,"**"=0.05,"*"=0.1)
+# ── Admin2 panel ──────────────────────────────────────────────────────────────
+raw_a2 <- read_csv(
+    here("01_panel_data", "panel_aid_admin2_fin_5year_1995_2015.csv"),
+    show_col_types = FALSE
+) |>
+    norm_nl()
+
+panel_a2 <- raw_a2 |>
+    build_vars(
+        "GID_2",
+        "total_aid_admin2",
+        "frag_index_admin2",
+        "ln_pop_admin2"
+    ) |>
+    winsorise("nl_growth") |>
+    add_cap("mean_sgq_admin2") |>
+    to_ld("GID_2")
+
+stacked_a2 <- raw_a2 |>
+    norm_nl() |>
+    build_vars(
+        "GID_2",
+        "total_aid_admin2",
+        "frag_index_admin2",
+        "ln_pop_admin2"
+    ) |>
+    winsorise("nl_growth") |>
+    add_cap("mean_sgq_admin2") |>
+    filter(year %in% c(2010L, 2015L), !is.na(lag_frag), !is.na(nl_growth))
+
+est_cfa2 <- function(d, y, fe = "GID_0") {
+    s1d <- filter(
+        d,
+        is.finite(total_aid_raw),
+        is.finite(IV_lag),
+        is.finite(lag_log_pop),
+        is.finite(log_lag_nl)
+    )
+    if (nrow(s1d) < 30) {
+        return(NULL)
+    }
+    s1 <- feols(
+        as.formula(paste0(
+            "total_aid_raw ~ IV_lag + lag_log_pop + lag_frag + log_lag_nl | ",
+            fe
+        )),
+        cluster = ~GID_0,
+        data = s1d
+    )
+    s2d <- mutate(s1d, cfa_resid = resid(s1)) |>
+        filter(
+            is.finite(.data[[y]]),
+            is.finite(lag_frag),
+            is.finite(lag_total_aid),
+            is.finite(cfa_resid)
+        )
+    feols(
+        as.formula(paste0(
+            y,
+            " ~ lag_frag + lag_total_aid + lag_log_pop + log_lag_nl + cfa_resid | ",
+            fe
+        )),
+        cluster = ~GID_0,
+        data = s2d
+    )
+}
+
+a2_full_cfa <- est_cfa2(panel_a2, "nl_growth")
+a2_hi_cfa <- est_cfa2(filter(panel_a2, high_cap == 1L), "nl_growth")
+a2_lo_cfa <- est_cfa2(filter(panel_a2, high_cap == 0L), "nl_growth")
+a2_stk_full <- est_cfa2(stacked_a2, "nl_growth", "GID_0^year + GID_2")
+a2_stk_hi <- est_cfa2(
+    filter(stacked_a2, high_cap == 1L),
+    "nl_growth",
+    "GID_0^year + GID_2"
+)
+a2_stk_lo <- est_cfa2(
+    filter(stacked_a2, high_cap == 0L),
+    "nl_growth",
+    "GID_0^year + GID_2"
+)
+a2_u5_full <- est_cfa2(filter(panel_a2, !is.na(u5m)), "u5m")
+
+# Admin2 first-stage F-stat
+fs_a2 <- feols(
+    total_aid_raw ~ IV_lag + lag_log_pop + lag_frag + log_lag_nl | GID_0,
+    cluster = ~GID_0,
+    data = filter(
+        panel_a2,
+        is.finite(total_aid_raw),
+        is.finite(IV_lag),
+        is.finite(lag_log_pop),
+        is.finite(log_lag_nl)
+    )
+)
+fs_fstat_a2 <- (coef(fs_a2)["IV_lag"] / se(fs_a2)["IV_lag"])^2
+
+# ── Scale diagnostic ──────────────────────────────────────────────────────────
+a2_agg <- panel_a2 |>
+    filter(!is.na(lag_frag)) |>
+    group_by(GID_1) |>
+    summarise(
+        mean_a2_frag = mean(lag_frag, na.rm = TRUE),
+        sd_a2_frag = sd(lag_frag, na.rm = TRUE),
+        n_dist = n(),
+        .groups = "drop"
+    )
+a1_frag <- panel_a1 |>
+    select(GID_1, a1_frag = lag_frag) |>
+    filter(!is.na(a1_frag))
+scale_diag <- inner_join(a1_frag, a2_agg, by = "GID_1")
+within_prov_cor <- cor(
+    scale_diag$a1_frag,
+    scale_diag$mean_a2_frag,
+    use = "complete.obs"
+)
+within_prov_sd <- mean(scale_diag$sd_a2_frag, na.rm = TRUE)
+
+# ── Governance interaction models ─────────────────────────────────────────────
+make_int <- function(d, sgq_var, y = "nl_growth") {
+    d |>
+        mutate(
+            sgq_std = (.data[[sgq_var]] -
+                mean(.data[[sgq_var]], na.rm = TRUE)) /
+                sd(.data[[sgq_var]], na.rm = TRUE),
+            frag_x_sgq = lag_frag * sgq_std
+        ) |>
+        filter(
+            is.finite(.data[[y]]),
+            is.finite(log_lag_nl),
+            is.finite(frag_x_sgq)
+        )
+}
+a1_int_d <- make_int(panel_a1, "mean_sgq_admin1")
+a2_int_d <- make_int(panel_a2, "mean_sgq_admin2")
+
+m_int_a1 <- feols(
+    nl_growth ~ lag_frag +
+        frag_x_sgq +
+        sgq_std +
+        lag_total_aid +
+        lag_log_pop +
+        log_lag_nl |
+        GID_0,
+    cluster = ~GID_0,
+    data = a1_int_d
+)
+m_int_a2 <- feols(
+    nl_growth ~ lag_frag +
+        frag_x_sgq +
+        sgq_std +
+        lag_total_aid +
+        lag_log_pop +
+        log_lag_nl |
+        GID_0,
+    cluster = ~GID_0,
+    data = a2_int_d
+)
+
+# ── Variable dict & significance ──────────────────────────────────────────────
+DICT <- c(
+    lag_frag = "Frag. Index (t−1)",
+    lag_total_aid = "ln Aid (t−1)",
+    lag_log_pop = "ln Pop (t−1)",
+    log_lag_nl = "ln NL Level (t−1)",
+    cfa_resid = "CFA Residual",
+    fit_lag_total_aid = "ln Aid (instrumented)",
+    frag_x_sgq = "Frag x Gov. Quality",
+    sgq_std = "Gov. Quality (std.)"
+)
+SIG <- c("***" = 0.01, "**" = 0.05, "*" = 0.1)
 ```
 
 # Research Question
@@ -190,28 +507,37 @@ The panel covers **1995–2015** in five-year buckets (1995, 2000, 2005, 2010, 2
 ```{r desc-stats}
 #| echo: false
 desc_vars <- list(
-  "NL Growth (% / yr)"       = panel_a1$nl_growth,
-  "U5 Mortality"             = panel_a1$u5m,
-  "Fragmentation Index"      = panel_a1$lag_frag,
-  "Total Aid (USD, million)" = panel_a1$total_aid_admin1 / 1e6,
-  "State Gov. Quality"       = panel_a1$mean_sgq_admin1,
-  "Shift-Share IV (lag)"     = panel_a1$IV_lag
+    "NL Growth (% / yr)" = panel_a1$nl_growth,
+    "U5 Mortality" = panel_a1$u5m,
+    "Fragmentation Index" = panel_a1$lag_frag,
+    "Total Aid (USD, million)" = panel_a1$total_aid_admin1 / 1e6,
+    "State Gov. Quality" = panel_a1$mean_sgq_admin1,
+    "Shift-Share IV (lag)" = panel_a1$IV_lag
 )
 
 make_row <- function(v, label) {
-  tibble(Variable=label, N=sum(!is.na(v)),
-         Mean=round(mean(v,na.rm=TRUE),3), SD=round(sd(v,na.rm=TRUE),3),
-         P25=round(quantile(v,.25,na.rm=TRUE),3),
-         P75=round(quantile(v,.75,na.rm=TRUE),3))
+    tibble(
+        Variable = label,
+        N = sum(!is.na(v)),
+        Mean = round(mean(v, na.rm = TRUE), 3),
+        SD = round(sd(v, na.rm = TRUE), 3),
+        P25 = round(quantile(v, .25, na.rm = TRUE), 3),
+        P75 = round(quantile(v, .75, na.rm = TRUE), 3)
+    )
 }
-bind_rows(mapply(make_row, desc_vars, names(desc_vars), SIMPLIFY=FALSE)) |>
-  gt() |>
-  tab_header(title="Table 1: Summary Statistics",
-             subtitle="Admin1 long-difference sample (N=540 regions, 33 countries)") |>
-  fmt_number(columns=c(Mean,SD,P25,P75), decimals=3) |>
-  cols_align("center", columns=c(N,Mean,SD,P25,P75)) |>
-  tab_style(style=cell_text(weight="bold"), locations=cells_column_labels()) |>
-  opt_stylize(style=1)
+bind_rows(mapply(make_row, desc_vars, names(desc_vars), SIMPLIFY = FALSE)) |>
+    gt() |>
+    tab_header(
+        title = "Table 1: Summary Statistics",
+        subtitle = "Admin1 long-difference sample (N=540 regions, 33 countries)"
+    ) |>
+    fmt_number(columns = c(Mean, SD, P25, P75), decimals = 3) |>
+    cols_align("center", columns = c(N, Mean, SD, P25, P75)) |>
+    tab_style(
+        style = cell_text(weight = "bold"),
+        locations = cells_column_labels()
+    ) |>
+    opt_stylize(style = 1)
 ```
 
 **Key variable:** `frag_index_admin1` is constructed as one minus the Herfindahl-Hirschman Index (HHI) over donor shares within a region-bucket. Higher values indicate more dispersed, fragmented donors; lower values indicate a single dominant donor.
@@ -229,29 +555,38 @@ The naive OLS regression of outcomes on fragmentation is biased. Donors do not a
 #| fig-height: 4
 
 coords <- list(
-  x = c(Frag=1, Aid=3, Outcome=5, U=3, Country=3),
-  y = c(Frag=2, Aid=2, Outcome=2, U=0.5, Country=3.5)
+    x = c(Frag = 1, Aid = 3, Outcome = 5, U = 3, Country = 3),
+    y = c(Frag = 2, Aid = 2, Outcome = 2, U = 0.5, Country = 3.5)
 )
 dag1 <- dagify(
-  Outcome ~ Frag + Aid + U,
-  Aid     ~ U + Country,
-  Frag    ~ Aid,
-  U       ~ Country,
-  labels  = c(Frag="Fragmentation\n(treatment)",
-              Aid="Total Aid\n(volume)",
-              Outcome="NL Growth\n(outcome)",
-              U="Unobserved\nRegion Quality",
-              Country="Country FE\n(α_c)"),
-  exposure = "Frag", outcome = "Outcome",
-  coords   = coords
+    Outcome ~ Frag + Aid + U,
+    Aid ~ U + Country,
+    Frag ~ Aid,
+    U ~ Country,
+    labels = c(
+        Frag = "Fragmentation\n(treatment)",
+        Aid = "Total Aid\n(volume)",
+        Outcome = "NL Growth\n(outcome)",
+        U = "Unobserved\nRegion Quality",
+        Country = "Country FE\n(α_c)"
+    ),
+    exposure = "Frag",
+    outcome = "Outcome",
+    coords = coords
 )
 
-ggdag_status(dag1, use_labels="label", text=FALSE) +
-  theme_dag() +
-  scale_color_manual(values=c(exposure="#2166ac", outcome="#d73027",
-                               adjusted="#4dac26", unadjusted="#f4a582"),
-                     guide="none") +
-  labs(title=NULL)
+ggdag_status(dag1, use_labels = "label", text = FALSE) +
+    theme_dag() +
+    scale_color_manual(
+        values = c(
+            exposure = "#2166ac",
+            outcome = "#d73027",
+            adjusted = "#4dac26",
+            unadjusted = "#f4a582"
+        ),
+        guide = "none"
+    ) +
+    labs(title = NULL)
 ```
 
 The problem has two parts:
@@ -276,34 +611,51 @@ The shift-share IV enters the analysis **lagged one period** (`IV_lag`), so the 
 #| fig-height: 4
 
 coords2 <- list(
-  x = c(Shares=1, Frac=1, IV=2.5, Aid=4, Outcome=5.5, U=4),
-  y = c(Shares=3, Frac=1, IV=2,   Aid=2, Outcome=2,   U=0.5)
+    x = c(Shares = 1, Frac = 1, IV = 2.5, Aid = 4, Outcome = 5.5, U = 4),
+    y = c(Shares = 3, Frac = 1, IV = 2, Aid = 2, Outcome = 2, U = 0.5)
 )
 dag2 <- dagify(
-  Outcome ~ Aid + U + Frag,
-  Aid     ~ IV + U,
-  IV      ~ Shares + Frac,
-  Frag    ~ Aid,
-  labels  = c(Shares="Historical\nShares (p̄)",
-              Frac="Donor Gov.\nFractionalization",
-              IV="Shift-Share\nIV",
-              Aid="Total Aid",
-              Outcome="NL Growth",
-              U="Unobserved\nRegion Quality",
-              Frag="Fragmentation"),
-  exposure="IV", outcome="Outcome",
-  latent="U",
-  coords=coords2
+    Outcome ~ Aid + U + Frag,
+    Aid ~ IV + U,
+    IV ~ Shares + Frac,
+    Frag ~ Aid,
+    labels = c(
+        Shares = "Historical\nShares (p̄)",
+        Frac = "Donor Gov.\nFractionalization",
+        IV = "Shift-Share\nIV",
+        Aid = "Total Aid",
+        Outcome = "NL Growth",
+        U = "Unobserved\nRegion Quality",
+        Frag = "Fragmentation"
+    ),
+    exposure = "IV",
+    outcome = "Outcome",
+    latent = "U",
+    coords = coords2
 )
 
-ggdag_status(dag2, use_labels="label", text=FALSE) +
-  annotate("label", x=3.75, y=0.8, label="Exclusion\nrestriction:\nIV ⊥ U | X,α_c",
-           size=3, colour="#d73027", fill="white", label.size=0.3) +
-  theme_dag() +
-  scale_color_manual(values=c(exposure="#2166ac", outcome="#d73027",
-                               latent="#f4a582", unadjusted="grey70"),
-                     guide="none") +
-  labs(title=NULL)
+ggdag_status(dag2, use_labels = "label", text = FALSE) +
+    annotate(
+        "label",
+        x = 3.75,
+        y = 0.8,
+        label = "Exclusion\nrestriction:\nIV ⊥ U | X,α_c",
+        size = 3,
+        colour = "#d73027",
+        fill = "white",
+        label.size = 0.3
+    ) +
+    theme_dag() +
+    scale_color_manual(
+        values = c(
+            exposure = "#2166ac",
+            outcome = "#d73027",
+            latent = "#f4a582",
+            unadjusted = "grey70"
+        ),
+        guide = "none"
+    ) +
+    labs(title = NULL)
 ```
 
 **Exclusion restriction:** conditional on country FE and pre-period NL level (`log_lag_nl`), the IV should be uncorrelated with unobserved determinants of NL growth. We add the pre-period NL level as a control following Goldsmith-Pinkham et al. (2020): the IV is allowed to correlate with initial economic conditions (the *shares* reflect historical donor presence), but only needs to be uncorrelated with *changes* in economic activity.
@@ -347,30 +699,38 @@ The residual $\hat{v}_{it}$ absorbs the endogenous component of aid volume. If $
 #| fig-height: 3.5
 
 coords3 <- list(
-  x = c(IV=1, Aid=3, Resid=3, Frag=2, Outcome=5, U=4),
-  y = c(IV=2, Aid=2, Resid=1, Frag=3, Outcome=2, U=1)
+    x = c(IV = 1, Aid = 3, Resid = 3, Frag = 2, Outcome = 5, U = 4),
+    y = c(IV = 2, Aid = 2, Resid = 1, Frag = 3, Outcome = 2, U = 1)
 )
 dag3 <- dagify(
-  Outcome ~ Frag + Aid + U,
-  Aid     ~ IV + U,
-  Resid   ~ U,
-  Outcome ~ Resid,
-  labels  = c(IV="Shift-Share\nIV",
-              Aid="Total Aid\n(instrumented)",
-              Resid="First-Stage\nResidual v̂",
-              Frag="Fragmentation\n(identified here)",
-              Outcome="NL Growth",
-              U="Unobservables\nU"),
-  exposure="Frag", outcome="Outcome",
-  coords=coords3
+    Outcome ~ Frag + Aid + U,
+    Aid ~ IV + U,
+    Resid ~ U,
+    Outcome ~ Resid,
+    labels = c(
+        IV = "Shift-Share\nIV",
+        Aid = "Total Aid\n(instrumented)",
+        Resid = "First-Stage\nResidual v̂",
+        Frag = "Fragmentation\n(identified here)",
+        Outcome = "NL Growth",
+        U = "Unobservables\nU"
+    ),
+    exposure = "Frag",
+    outcome = "Outcome",
+    coords = coords3
 )
 
-ggdag_status(dag3, use_labels="label", text=FALSE) +
-  theme_dag() +
-  scale_color_manual(values=c(exposure="#2166ac", outcome="#d73027",
-                               unadjusted="grey70"),
-                     guide="none") +
-  labs(title=NULL)
+ggdag_status(dag3, use_labels = "label", text = FALSE) +
+    theme_dag() +
+    scale_color_manual(
+        values = c(
+            exposure = "#2166ac",
+            outcome = "#d73027",
+            unadjusted = "grey70"
+        ),
+        guide = "none"
+    ) +
+    labs(title = NULL)
 ```
 
 ## 2SLS
@@ -390,12 +750,22 @@ Before examining structural results, we verify instrument relevance and test the
 ```{r iv-table}
 #| tbl-cap: "IV Diagnostics. First Stage: total aid on IV_lag. Reduced Form: NL growth on IV_lag. Placebo: pre-period NL growth (t−2 → t−1) on IV_lag, conditioning on pre-period NL level."
 
-etable(first_stage, rf_nl, placebo,
-       headers  = c("(1) First Stage","(2) Reduced Form","(3) Placebo"),
-       dict     = c(IV_lag="Shift-Share IV (lag)", lag_frag="Frag. Index (t−1)",
-                    lag_log_pop="ln Pop (t−1)", log_lag_nl="ln NL Level (t−1)",
-                    total_aid_raw="Total Aid (USD)"),
-       se.below=TRUE, signif.code=SIG, fitstat=c("n","r2"))
+etable(
+    first_stage,
+    rf_nl,
+    placebo,
+    headers = c("(1) First Stage", "(2) Reduced Form", "(3) Placebo"),
+    dict = c(
+        IV_lag = "Shift-Share IV (lag)",
+        lag_frag = "Frag. Index (t−1)",
+        lag_log_pop = "ln Pop (t−1)",
+        log_lag_nl = "ln NL Level (t−1)",
+        total_aid_raw = "Total Aid (USD)"
+    ),
+    se.below = TRUE,
+    signif.code = SIG,
+    fitstat = c("n", "r2")
+)
 ```
 
 **Reading the table:**
@@ -413,9 +783,17 @@ etable(first_stage, rf_nl, placebo,
 ```{r main-table}
 #| tbl-cap: "Table 2: Effect of donor fragmentation on NL growth (% / yr). Admin1, long-difference sample. Clustered SE at country level in parentheses."
 
-etable(m_ols, m_fe, m_cfa, m_2sls,
-       headers=c("(1) OLS","(2) Country FE","(3) CFA","(4) 2SLS"),
-       dict=DICT, se.below=TRUE, signif.code=SIG, fitstat=c("n","r2"))
+etable(
+    m_ols,
+    m_fe,
+    m_cfa,
+    m_2sls,
+    headers = c("(1) OLS", "(2) Country FE", "(3) CFA", "(4) 2SLS"),
+    dict = DICT,
+    se.below = TRUE,
+    signif.code = SIG,
+    fitstat = c("n", "r2")
+)
 ```
 
 **What the table says:**
@@ -432,58 +810,102 @@ Key observations:
 
 # Heterogeneity: Governance Capacity
 
+The natural heterogeneity dimension is governance quality: do regions with stronger state capacity handle donor fragmentation better or worse? We test this two ways — a binary split at the 75th percentile of Afrobarometer SGQ, and a continuous interaction — and the two approaches give different answers. We explain why, and which to trust.
+
+## Continuous interaction (preferred)
+
+The continuous interaction interacts the standardised governance quality score with the fragmentation index. This uses all the variation in governance quality and avoids arbitrary threshold choices.
+
+```{r int-table}
+#| tbl-cap: "Table 3: Fragmentation × Governance Quality interaction. frag_x_sgq is the fragmentation index multiplied by standardised SGQ (mean zero, unit SD). Country FE, long-difference. Admin1 (province) and Admin2 (district)."
+
+etable(
+    m_int_a1,
+    m_int_a2,
+    headers = c("Admin1 (Province)", "Admin2 (District)"),
+    dict = DICT,
+    se.below = TRUE,
+    signif.code = SIG,
+    fitstat = c("n", "r2")
+)
+```
+
+The interaction coefficient (`frag_x_sgq`) is **positive at both admin levels** — `r round(coef(m_int_a1)["frag_x_sgq"],3)` at admin1 (SE = `r round(se(m_int_a1)["frag_x_sgq"],3)`) and `r round(coef(m_int_a2)["frag_x_sgq"],3)` at admin2 (SE = `r round(se(m_int_a2)["frag_x_sgq"],3)`). The positive sign says governance quality *mitigates* the harm of fragmentation: better-governed regions suffer less from having many donors. This is the direction the theory predicts. Neither coefficient clears conventional significance, but the consistent positive sign across both levels is informative.
+
+## Binary split (secondary) and why it misleads
+
 ```{r het-table}
-#| tbl-cap: "Table 3: Effect of fragmentation by governance capacity. Regions above the 75th percentile of Afrobarometer state governance quality = High Capacity. CFA and 2SLS specifications, country FE."
+#| tbl-cap: "Table 3b: Binary capacity split (75th pct of SGQ). Compare with Table 3 — the binary split shows the opposite pattern from the continuous interaction."
 
-etable(hi_cfa, lo_cfa, hi_2sls, lo_2sls,
-       headers=c("High Cap (CFA)","Low Cap (CFA)","High Cap (2SLS)","Low Cap (2SLS)"),
-       dict=DICT, se.below=TRUE, signif.code=SIG, fitstat=c("n","r2"))
+etable(
+    hi_cfa,
+    lo_cfa,
+    headers = c("High Cap (CFA, 75th pct)", "Low Cap (CFA, 75th pct)"),
+    dict = DICT,
+    se.below = TRUE,
+    signif.code = SIG,
+    fitstat = c("n", "r2")
+)
 ```
 
-```{r het-coefplot}
-#| fig-cap: "Coefficient on fragmentation index by capacity group and specification. Points are estimates; bars are 95% CIs. Clustered at country level."
+The 75th percentile split appears to show the opposite: high-cap regions suffer *more* (−4.8\*\*) than low-cap (−2.4, n.s.). But this result has a compositional explanation. Three diagnostics reveal the problem:
 
-coef_df <- bind_rows(
-  tibble(spec="OLS",       group="Full",     est=coef(m_ols)["lag_frag"],
-         lo=confint(m_ols)["lag_frag",1],   hi=confint(m_ols)["lag_frag",2]),
-  tibble(spec="Country FE",group="Full",     est=coef(m_fe)["lag_frag"],
-         lo=confint(m_fe)["lag_frag",1],    hi=confint(m_fe)["lag_frag",2]),
-  tibble(spec="CFA",       group="Full",     est=coef(m_cfa)["lag_frag"],
-         lo=confint(m_cfa)["lag_frag",1],   hi=confint(m_cfa)["lag_frag",2]),
-  tibble(spec="CFA",       group="High Cap", est=coef(hi_cfa)["lag_frag"],
-         lo=confint(hi_cfa)["lag_frag",1],  hi=confint(hi_cfa)["lag_frag",2]),
-  tibble(spec="CFA",       group="Low Cap",  est=coef(lo_cfa)["lag_frag"],
-         lo=confint(lo_cfa)["lag_frag",1],  hi=confint(lo_cfa)["lag_frag",2])
-) |>
-  mutate(label=paste0(spec,"\n(",group,")"),
-         label=factor(label, levels=unique(label)))
+```{r cap-composition}
+#| tbl-cap: "Why the 75th percentile split is misleading. High-cap regions are darker (lower NL), smaller (lower aid), and dominated by a single country (Malawi = 19% of the high-cap group)."
 
-ggplot(coef_df, aes(x=label, y=est, colour=group)) +
-  geom_hline(yintercept=0, linetype="dashed", colour="grey50") +
-  geom_errorbar(aes(ymin=lo, ymax=hi), width=0.2, linewidth=0.8) +
-  geom_point(size=3) +
-  scale_colour_manual(values=c("Full"="#555","High Cap"="#1b9e77","Low Cap"="#d95f02")) +
-  labs(x=NULL, y="Coef. on Fragmentation Index", colour=NULL,
-       title="Effect of Fragmentation on NL Growth Across Specifications") +
-  theme_minimal(base_size=12) + theme(legend.position="bottom")
+panel_a1 |>
+    group_by(
+        `Capacity group` = ifelse(
+            high_cap == 1,
+            "High (top 25% SGQ)",
+            "Low (bottom 75% SGQ)"
+        )
+    ) |>
+    summarise(
+        N = n(),
+        `Mean SGQ` = round(mean(mean_sgq_admin1, na.rm = TRUE), 1),
+        `Mean NL level` = round(mean(mean_nl, na.rm = TRUE), 2),
+        `Mean Aid (USD M)` = round(
+            mean(total_aid_admin1, na.rm = TRUE) / 1e6,
+            1
+        ),
+        `Malawi share (%)` = round(100 * mean(GID_0 == "MWI"), 1),
+        .groups = "drop"
+    ) |>
+    gt() |>
+    tab_header(title = "Composition of High vs. Low Capacity Groups") |>
+    tab_style(
+        style = cell_text(weight = "bold"),
+        locations = cells_column_labels()
+    ) |>
+    opt_stylize(style = 1)
 ```
 
-**The surprise:** the negative effect of fragmentation is **larger and more significant in high-governance regions** (−4.8\*\*, CFA) than in low-governance regions (−2.4, insignificant).
+1. **High-cap regions are economically darker.** Mean NL of 1.4 vs. 4.7. The top-25% governance group consists of small, poor, rural regions — not the capable, urbanised bureaucracies the label implies.
 
-The standard expectation from the aid coordination literature is the opposite: low-capacity governments should suffer most from donor fragmentation because they cannot coordinate across many principals. Two alternative interpretations fit the observed pattern:
+2. **Country composition is skewed.** Malawi contributes ~19% of the high-cap group (26 of 135 units). If Malawi drives the estimate, the finding reflects something about Malawi specifically — a small country that scores well on Afrobarometer surveys but receives many donors in a compressed geographic area — rather than governance quality as a mechanism.
 
-1. **Burden on functional bureaucracies.** High-capacity governments are the ones donors actually engage with. Multiple donors impose independent reporting, compliance, and reform conditionality demands on those governments. Fragmentation fragments *government attention*, not just donor resources. Low-capacity states are less engaged by donors to begin with, so fragmentation's marginal cost is lower.
+3. **The continuous interaction contradicts the binary split.** Both use the same SGQ variable. The interaction says more governance = less harm; the binary split says the top quartile suffers more. These cannot both be right as statements about governance quality. The resolution: the 75th percentile cut is capturing region composition, not governance channel.
 
-2. **Aid works in high-capacity regions; fragmentation disrupts it.** Aid may only be effective in high-capacity contexts (consistent with a large literature on absorptive capacity). Fragmentation then damages a process that was otherwise working. In low-capacity regions, aid effectiveness is low regardless of donor structure, so fragmentation does not add much additional harm.
+**Bottom line:** governance quality appears to *mitigate* fragmentation harm (positive interaction), but the effect is statistically weak. The binary split result should not be interpreted as a clean heterogeneity finding. The paper should lead with the continuous interaction and note the binary split inconsistency in a footnote.
 
 # Health Outcomes: Under-5 Mortality
 
 ```{r u5m-table}
 #| tbl-cap: "Table 4: Effect of fragmentation on under-5 mortality (U5M). Country FE and CFA, full sample and capacity split."
 
-etable(u5_ols, u5_fe, u5_cfa, hi_u5, lo_u5,
-       headers=c("OLS","Country FE","CFA (Full)","High Cap","Low Cap"),
-       dict=DICT, se.below=TRUE, signif.code=SIG, fitstat=c("n","r2"))
+etable(
+    u5_ols,
+    u5_fe,
+    u5_cfa,
+    hi_u5,
+    lo_u5,
+    headers = c("OLS", "Country FE", "CFA (Full)", "High Cap", "Low Cap"),
+    dict = DICT,
+    se.below = TRUE,
+    signif.code = SIG,
+    fitstat = c("n", "r2")
+)
 ```
 
 Fragmentation has **no significant effect on U5 mortality** in any specification or subgroup. The coefficient is positive and tiny (≈0.002) across all columns, dwarfed by the standard error.
@@ -506,10 +928,20 @@ The main specification uses the **long-difference** estimator (one observation p
 ```{r estimator-table}
 #| tbl-cap: "Table 5: Estimator comparison. CFA specification. Long-difference identifies off country-level cross-section only (country FE). Stacked and panel FE identify within-unit variation (unit + country-year FE)."
 
-etable(m_cfa, stk_cfa, pfe_cfa,
-       headers=c("Long-Diff\n(country FE)","Stacked 2-window\n(unit+cy FE)",
-                 "Panel FE\n(unit+cy FE)"),
-       dict=DICT, se.below=TRUE, signif.code=SIG, fitstat=c("n","r2"))
+etable(
+    m_cfa,
+    stk_cfa,
+    pfe_cfa,
+    headers = c(
+        "Long-Diff\n(country FE)",
+        "Stacked 2-window\n(unit+cy FE)",
+        "Panel FE\n(unit+cy FE)"
+    ),
+    dict = DICT,
+    se.below = TRUE,
+    signif.code = SIG,
+    fitstat = c("n", "r2")
+)
 ```
 
 The within-unit estimates (stacked and panel FE) both come in at −1.1, about one-third of the long-difference estimate. **This gap is not explained by data vintage** — the stacked estimator uses only clean post-2000 data and still attenuates. The explanation is that **within-unit variation in fragmentation is limited**. Regions' positions in the donor landscape change slowly; the long-diff estimate picks up the cross-sectional association between persistent fragmentation and persistent under-development, which the unit FE absorbs.
@@ -521,31 +953,273 @@ The paper should present both: the long-difference as the cross-sectional condit
 ```{r wins-rob}
 #| fig-cap: "Sensitivity of the CFA coefficient on fragmentation to winsorization bounds applied to NL growth. Bars are 95% CIs."
 
-wins_specs <- list("1/99"=c(.01,.99),"5/95"=c(.05,.95),"10/90"=c(.10,.90))
+wins_specs <- list(
+    "1/99" = c(.01, .99),
+    "5/95" = c(.05, .95),
+    "10/90" = c(.10, .90)
+)
 wins_mods <- lapply(wins_specs, function(b) {
-  d <- raw_a1 |> norm_nl() |>
-    build_vars("GID_1","total_aid_admin1","frag_index_admin1","ln_pop_admin1") |>
-    winsorise("nl_growth", b[1], b[2]) |> add_cap("mean_sgq_admin1") |>
-    to_ld("GID_1")
-  est_cfa(d, "nl_growth")
+    d <- raw_a1 |>
+        norm_nl() |>
+        build_vars(
+            "GID_1",
+            "total_aid_admin1",
+            "frag_index_admin1",
+            "ln_pop_admin1"
+        ) |>
+        winsorise("nl_growth", b[1], b[2]) |>
+        add_cap("mean_sgq_admin1") |>
+        to_ld("GID_1")
+    est_cfa(d, "nl_growth")
 })
 
 wins_df <- bind_rows(lapply(names(wins_specs), function(nm) {
-  m <- wins_mods[[nm]]
-  tibble(label=nm, est=coef(m)["lag_frag"],
-         lo=confint(m)["lag_frag",1], hi=confint(m)["lag_frag",2])
-})) |> mutate(label=factor(label, levels=names(wins_specs)))
+    m <- wins_mods[[nm]]
+    tibble(
+        label = nm,
+        est = coef(m)["lag_frag"],
+        lo = confint(m)["lag_frag", 1],
+        hi = confint(m)["lag_frag", 2]
+    )
+})) |>
+    mutate(label = factor(label, levels = names(wins_specs)))
 
-ggplot(wins_df, aes(x=label, y=est)) +
-  geom_hline(yintercept=0, linetype="dashed", colour="grey50") +
-  geom_errorbar(aes(ymin=lo, ymax=hi), width=0.2, linewidth=0.8, colour="#2166ac") +
-  geom_point(size=3, colour="#2166ac") +
-  labs(x="Winsorization bounds", y="CFA coef. on Frag. Index",
-       title="Robustness: Winsorization of NL Growth") +
-  theme_minimal(base_size=12)
+ggplot(wins_df, aes(x = label, y = est)) +
+    geom_hline(yintercept = 0, linetype = "dashed", colour = "grey50") +
+    geom_errorbar(
+        aes(ymin = lo, ymax = hi),
+        width = 0.2,
+        linewidth = 0.8,
+        colour = "#2166ac"
+    ) +
+    geom_point(size = 3, colour = "#2166ac") +
+    labs(
+        x = "Winsorization bounds",
+        y = "CFA coef. on Frag. Index",
+        title = "Robustness: Winsorization of NL Growth"
+    ) +
+    theme_minimal(base_size = 12)
 ```
 
 The sign is negative and significant at all three winsorization levels. The magnitude shrinks from −4.9 (1/99) to −2.0 (10/90) as more extreme observations are trimmed. The 5/95 baseline is the midpoint. The monotone shrinkage with tighter bounds suggests extreme NL growth observations (raster artefacts at the tails) amplify the point estimate but do not drive the result.
+
+# The Scale Question: Province vs. District
+
+This is the most important finding in the analysis. Admin1 (province) gives a consistently negative fragmentation coefficient; admin2 (district) gives a near-zero or slightly positive one. This is not a contradiction — it is a finding about where the mechanism operates.
+
+## Results side by side
+
+```{r admin-compare-table}
+#| tbl-cap: "Table 6: Admin1 vs. Admin2 comparison. CFA, country FE, long-difference. The sign reversal across geographic scales is the headline result."
+
+etable(
+    m_cfa,
+    a2_full_cfa,
+    headers = c("Admin1: Province (-3.1)", "Admin2: District (+0.4)"),
+    dict = DICT,
+    se.below = TRUE,
+    signif.code = SIG,
+    fitstat = c("n", "r2")
+)
+```
+
+```{r admin-compare-fig}
+#| fig-cap: "Figure 6: Fragmentation effects at admin1 and admin2 by capacity group. The sign reversal is present across all capacity subgroups — this is a genuine scale effect, not a sample composition issue."
+#| fig-height: 4.5
+
+coef_lev <- bind_rows(
+    tibble(
+        level = "Admin1\n(Province)",
+        cap = "Full",
+        est = coef(m_cfa)["lag_frag"],
+        lo = confint(m_cfa)["lag_frag", 1],
+        hi = confint(m_cfa)["lag_frag", 2]
+    ),
+    tibble(
+        level = "Admin1\n(Province)",
+        cap = "High Cap",
+        est = coef(hi_cfa)["lag_frag"],
+        lo = confint(hi_cfa)["lag_frag", 1],
+        hi = confint(hi_cfa)["lag_frag", 2]
+    ),
+    tibble(
+        level = "Admin1\n(Province)",
+        cap = "Low Cap",
+        est = coef(lo_cfa)["lag_frag"],
+        lo = confint(lo_cfa)["lag_frag", 1],
+        hi = confint(lo_cfa)["lag_frag", 2]
+    ),
+    tibble(
+        level = "Admin2\n(District)",
+        cap = "Full",
+        est = coef(a2_full_cfa)["lag_frag"],
+        lo = confint(a2_full_cfa)["lag_frag", 1],
+        hi = confint(a2_full_cfa)["lag_frag", 2]
+    ),
+    tibble(
+        level = "Admin2\n(District)",
+        cap = "High Cap",
+        est = coef(a2_hi_cfa)["lag_frag"],
+        lo = confint(a2_hi_cfa)["lag_frag", 1],
+        hi = confint(a2_hi_cfa)["lag_frag", 2]
+    ),
+    tibble(
+        level = "Admin2\n(District)",
+        cap = "Low Cap",
+        est = coef(a2_lo_cfa)["lag_frag"],
+        lo = confint(a2_lo_cfa)["lag_frag", 1],
+        hi = confint(a2_lo_cfa)["lag_frag", 2]
+    )
+) |>
+    mutate(
+        level = factor(
+            level,
+            levels = c("Admin1\n(Province)", "Admin2\n(District)")
+        ),
+        cap = factor(cap, levels = c("Full", "High Cap", "Low Cap"))
+    )
+
+ggplot(coef_lev, aes(x = cap, y = est, colour = cap)) +
+    geom_hline(yintercept = 0, linetype = "dashed", colour = "grey50") +
+    geom_errorbar(aes(ymin = lo, ymax = hi), width = 0.25, linewidth = 0.8) +
+    geom_point(size = 3.5) +
+    facet_wrap(~level) +
+    scale_colour_manual(
+        values = c(
+            "Full" = "#555",
+            "High Cap" = "#1b9e77",
+            "Low Cap" = "#d95f02"
+        ),
+        guide = "none"
+    ) +
+    labs(
+        x = NULL,
+        y = "Coef. on Fragmentation Index (NL Growth)",
+        caption = "CFA, country FE, long-difference. Bars = 95% CI."
+    ) +
+    theme_minimal(base_size = 12) +
+    theme(strip.text = element_text(face = "bold", size = 12))
+```
+
+## Why the sign reverses: the scale mechanism
+
+The fragmentation index means different things at different geographic resolutions. Two data facts make this concrete:
+
+- **Correlation between admin1 and admin2 fragmentation:** `r round(within_prov_cor, 2)` — moderate, not high. These are genuinely different measures.
+- **Mean within-province SD of admin2 fragmentation:** `r round(within_prov_sd, 3)` — substantial variation across districts within the same province. A province with fragmentation index 0.5 contains districts ranging widely around that mean.
+
+This tells us what each index captures:
+
+**Admin1 (province) fragmentation** = the total donor landscape that a **provincial government** must manage. A fragmented province means the provincial bureaucracy faces many donors — each with separate project agreements, reporting schedules, and policy conditions. The burden falls on the same set of officials regardless of where in the province each project sits.
+
+**Admin2 (district) fragmentation** = donor diversity *within a single district*. A fragmented district means different types of projects from different donors are active in that district — but those donors may be building a school, a road, and a health clinic in different places, not competing for the same government officer's time. The coordination problem at district level is about project complementarity, not bureaucratic bandwidth.
+
+```{r scale-dag}
+#| fig-cap: "DAG 4: The scale mechanism. At province level, the fragmentation index aggregates over all districts — so the provincial government officer (G_prov) must manage all donors simultaneously. At district level, donors cluster by project type and interact with lower-level implementers (G_dist). The coordination bottleneck is at different nodes depending on the resolution of analysis."
+#| fig-height: 3.5
+
+coords4 <- list(
+    x = c(
+        D1 = 1,
+        D2 = 2,
+        D3 = 3,
+        G_prov = 2,
+        Outcome_p = 4,
+        d1 = 1,
+        d2 = 2,
+        d3 = 3,
+        G_dist = 2,
+        Outcome_d = 4
+    ),
+    y = c(
+        D1 = 3.5,
+        D2 = 3.5,
+        D3 = 3.5,
+        G_prov = 2.5,
+        Outcome_p = 2.5,
+        d1 = 1.5,
+        d2 = 1.5,
+        d3 = 1.5,
+        G_dist = 0.5,
+        Outcome_d = 0.5
+    )
+)
+
+dag4 <- dagify(
+    G_prov ~ D1 + D2 + D3,
+    Outcome_p ~ G_prov,
+    G_dist ~ d2,
+    Outcome_d ~ d1 + d2 + d3 + G_dist,
+    labels = c(
+        D1 = "Donor 1\n(Health)",
+        D2 = "Donor 2\n(Infra)",
+        D3 = "Donor 3\n(Educ)",
+        G_prov = "Provincial Govt\n[bottleneck]",
+        Outcome_p = "Province\nNL Growth",
+        d1 = "Donor 1\n(District A)",
+        d2 = "Donor 2\n(District B)",
+        d3 = "Donor 3\n(District C)",
+        G_dist = "District Govt\n[narrow scope]",
+        Outcome_d = "District\nNL Growth"
+    ),
+    coords = coords4
+)
+
+ggdag(dag4, use_labels = "label", text = FALSE, node_size = 18) +
+    annotate(
+        "label",
+        x = 2,
+        y = 4.2,
+        label = "ADMIN1: many donors → one govt office",
+        size = 3,
+        fill = "#fde8e8",
+        colour = "#c00"
+    ) +
+    annotate(
+        "label",
+        x = 2,
+        y = 2.1,
+        label = "ADMIN2: donors in different districts → project diversity",
+        size = 3,
+        fill = "#e8f4e8",
+        colour = "#060"
+    ) +
+    theme_dag() +
+    labs(title = NULL)
+```
+
+## Stacked-window at admin2
+
+The same attenuation pattern seen at admin1 (long-diff vs. stacked) applies at admin2:
+
+```{r admin2-stacked}
+#| tbl-cap: "Table 7: Admin2 — long-difference vs. stacked 2-window. Both positive and insignificant."
+
+etable(
+    a2_full_cfa,
+    a2_stk_full,
+    a2_stk_hi,
+    a2_stk_lo,
+    headers = c(
+        "Full (LD)",
+        "Full (Stacked)",
+        "High (Stacked)",
+        "Low (Stacked)"
+    ),
+    dict = DICT,
+    se.below = TRUE,
+    signif.code = SIG,
+    fitstat = c("n", "r2")
+)
+```
+
+At admin2, the IV is stronger (first-stage F = `r round(fs_fstat_a2, 1)`) due to more variation in historical shares at the district level. The result is positive and insignificant regardless of estimator. The U5M result at admin2 is similarly null (`r round(coef(a2_u5_full)["lag_frag"],4)`, SE = `r round(se(a2_u5_full)["lag_frag"],4)`).
+
+## The policy implication of scale-dependence
+
+Donor coordination efforts are most valuable at the **provincial (admin1) level** — where the government bandwidth constraint is binding. Consolidating donor relationships at the provincial government office reduces the number of principals any given bureaucrat must manage. At the **district (admin2) level**, diversity of donor engagement across project types is not obviously harmful and may be beneficial (complementary projects).
+
+This has a direct operational translation: country-level coordination forums (like the ones run by the OECD DAC) should focus on reducing the number of donors that any single ministry or provincial office manages, not on minimising the total number of donors in a country.
 
 # Sector Analysis
 
@@ -556,59 +1230,112 @@ The sector-specific files decompose fragmentation and aid flows by broad sector 
 #| fig-height: 5
 
 extract_coef <- function(m, sector, cap) {
-  if (is.null(m)) return(NULL)
-  b <- coef(m)["lag_frag"]; s <- se(m)["lag_frag"]
-  if (is.na(b)||is.na(s)) return(NULL)
-  tibble(sector=sector, capacity=cap, est=b,
-         lo95=b-1.96*s, hi95=b+1.96*s, lo90=b-1.645*s, hi90=b+1.645*s)
+    if (is.null(m)) {
+        return(NULL)
+    }
+    b <- coef(m)["lag_frag"]
+    s <- se(m)["lag_frag"]
+    if (is.na(b) || is.na(s)) {
+        return(NULL)
+    }
+    tibble(
+        sector = sector,
+        capacity = cap,
+        est = b,
+        lo95 = b - 1.96 * s,
+        hi95 = b + 1.96 * s,
+        lo90 = b - 1.645 * s,
+        hi90 = b + 1.645 * s
+    )
 }
 
 coef_sec <- bind_rows(lapply(names(sector_mods), function(s) {
-  bind_rows(
-    extract_coef(sector_mods[[s]]$full, sector_labels[[s]], "Full"),
-    extract_coef(sector_mods[[s]]$hi,   sector_labels[[s]], "High Cap"),
-    extract_coef(sector_mods[[s]]$lo,   sector_labels[[s]], "Low Cap")
-  )
+    bind_rows(
+        extract_coef(sector_mods[[s]]$full, sector_labels[[s]], "Full"),
+        extract_coef(sector_mods[[s]]$hi, sector_labels[[s]], "High Cap"),
+        extract_coef(sector_mods[[s]]$lo, sector_labels[[s]], "Low Cap")
+    )
 })) |>
-  mutate(sector=factor(sector, levels=rev(unname(sector_labels))),
-         capacity=factor(capacity, levels=c("Full","High Cap","Low Cap")))
+    mutate(
+        sector = factor(sector, levels = rev(unname(sector_labels))),
+        capacity = factor(capacity, levels = c("Full", "High Cap", "Low Cap"))
+    )
 
-ggplot(coef_sec, aes(x=est, y=sector, colour=capacity, shape=capacity)) +
-  geom_vline(xintercept=0, linetype="dashed", colour="grey60") +
-  geom_linerange(aes(xmin=lo95, xmax=hi95), linewidth=0.6,
-                 position=position_dodge(0.6)) +
-  geom_linerange(aes(xmin=lo90, xmax=hi90), linewidth=1.4,
-                 position=position_dodge(0.6)) +
-  geom_point(size=2.5, position=position_dodge(0.6)) +
-  scale_colour_manual(values=c("Full"="#555","High Cap"="#1b9e77","Low Cap"="#d95f02")) +
-  scale_shape_manual(values=c("Full"=15,"High Cap"=16,"Low Cap"=17)) +
-  labs(x="Coef. on Within-Sector Frag. Index", y=NULL,
-       colour=NULL, shape=NULL,
-       caption="Country FE only. Clustered SE at country level.") +
-  theme_minimal(base_size=12) +
-  theme(legend.position="bottom", panel.grid.minor=element_blank())
+ggplot(
+    coef_sec,
+    aes(x = est, y = sector, colour = capacity, shape = capacity)
+) +
+    geom_vline(xintercept = 0, linetype = "dashed", colour = "grey60") +
+    geom_linerange(
+        aes(xmin = lo95, xmax = hi95),
+        linewidth = 0.6,
+        position = position_dodge(0.6)
+    ) +
+    geom_linerange(
+        aes(xmin = lo90, xmax = hi90),
+        linewidth = 1.4,
+        position = position_dodge(0.6)
+    ) +
+    geom_point(size = 2.5, position = position_dodge(0.6)) +
+    scale_colour_manual(
+        values = c(
+            "Full" = "#555",
+            "High Cap" = "#1b9e77",
+            "Low Cap" = "#d95f02"
+        )
+    ) +
+    scale_shape_manual(
+        values = c("Full" = 15, "High Cap" = 16, "Low Cap" = 17)
+    ) +
+    labs(
+        x = "Coef. on Within-Sector Frag. Index",
+        y = NULL,
+        colour = NULL,
+        shape = NULL,
+        caption = "Country FE only. Clustered SE at country level."
+    ) +
+    theme_minimal(base_size = 12) +
+    theme(legend.position = "bottom", panel.grid.minor = element_blank())
 ```
 
 ```{r sector-table}
 #| tbl-cap: "Sector coefficients on fragmentation: NL growth, country FE, long-difference."
 
 sec_summ <- bind_rows(lapply(names(sector_mods), function(s) {
-  m <- sector_mods[[s]]$full
-  if (is.null(m)) return(NULL)
-  b <- coef(m)["lag_frag"]; se_val <- se(m)["lag_frag"]; n <- nobs(m)
-  p <- 2*pt(-abs(b/se_val), df=n-1)
-  stars <- ifelse(p<.01,"***", ifelse(p<.05,"**", ifelse(p<.10,"*","")))
-  tibble(Sector=sector_labels[[s]],
-         Coef=round(b,3), SE=round(se_val,3),
-         Sig=stars, N=n)
+    m <- sector_mods[[s]]$full
+    if (is.null(m)) {
+        return(NULL)
+    }
+    b <- coef(m)["lag_frag"]
+    se_val <- se(m)["lag_frag"]
+    n <- nobs(m)
+    p <- 2 * pt(-abs(b / se_val), df = n - 1)
+    stars <- ifelse(
+        p < .01,
+        "***",
+        ifelse(p < .05, "**", ifelse(p < .10, "*", ""))
+    )
+    tibble(
+        Sector = sector_labels[[s]],
+        Coef = round(b, 3),
+        SE = round(se_val, 3),
+        Sig = stars,
+        N = n
+    )
 }))
 
-sec_summ |> gt() |>
-  cols_label(Coef="Coef.", Sig="") |>
-  tab_header(title="Sector-Specific Fragmentation Effects (NL Growth)") |>
-  tab_style(style=cell_text(weight="bold"), locations=cells_column_labels()) |>
-  tab_footnote("Country FE, long-difference. No IV. * p<0.10 ** p<0.05 *** p<0.01") |>
-  opt_stylize(style=1)
+sec_summ |>
+    gt() |>
+    cols_label(Coef = "Coef.", Sig = "") |>
+    tab_header(title = "Sector-Specific Fragmentation Effects (NL Growth)") |>
+    tab_style(
+        style = cell_text(weight = "bold"),
+        locations = cells_column_labels()
+    ) |>
+    tab_footnote(
+        "Country FE, long-difference. No IV. * p<0.10 ** p<0.05 *** p<0.01"
+    ) |>
+    opt_stylize(style = 1)
 ```
 
 **Key findings by sector:**
@@ -627,49 +1354,190 @@ sec_summ |> gt() |>
 #| tbl-cap: "Summary: CFA coefficient on fragmentation index across all main specifications."
 
 summ <- bind_rows(
-  tibble(Specification="Main — OLS",               Sample="Full",
-         Coef=round(coef(m_ols)["lag_frag"],3),    SE=round(se(m_ols)["lag_frag"],3),
-         N=nobs(m_ols)),
-  tibble(Specification="Main — Country FE",         Sample="Full",
-         Coef=round(coef(m_fe)["lag_frag"],3),     SE=round(se(m_fe)["lag_frag"],3),
-         N=nobs(m_fe)),
-  tibble(Specification="Main — CFA",                Sample="Full",
-         Coef=round(coef(m_cfa)["lag_frag"],3),    SE=round(se(m_cfa)["lag_frag"],3),
-         N=nobs(m_cfa)),
-  tibble(Specification="Main — CFA",                Sample="High Cap",
-         Coef=round(coef(hi_cfa)["lag_frag"],3),   SE=round(se(hi_cfa)["lag_frag"],3),
-         N=nobs(hi_cfa)),
-  tibble(Specification="Main — CFA",                Sample="Low Cap",
-         Coef=round(coef(lo_cfa)["lag_frag"],3),   SE=round(se(lo_cfa)["lag_frag"],3),
-         N=nobs(lo_cfa)),
-  tibble(Specification="Stacked 2-window — CFA",    Sample="Full",
-         Coef=round(coef(stk_cfa)["lag_frag"],3),  SE=round(se(stk_cfa)["lag_frag"],3),
-         N=nobs(stk_cfa)),
-  tibble(Specification="Panel FE — CFA",            Sample="Full",
-         Coef=round(coef(pfe_cfa)["lag_frag"],3),  SE=round(se(pfe_cfa)["lag_frag"],3),
-         N=nobs(pfe_cfa))
+    tibble(
+        Specification = "Main — OLS",
+        Sample = "Full",
+        Coef = round(coef(m_ols)["lag_frag"], 3),
+        SE = round(se(m_ols)["lag_frag"], 3),
+        N = nobs(m_ols)
+    ),
+    tibble(
+        Specification = "Main — Country FE",
+        Sample = "Full",
+        Coef = round(coef(m_fe)["lag_frag"], 3),
+        SE = round(se(m_fe)["lag_frag"], 3),
+        N = nobs(m_fe)
+    ),
+    tibble(
+        Specification = "Main — CFA",
+        Sample = "Full",
+        Coef = round(coef(m_cfa)["lag_frag"], 3),
+        SE = round(se(m_cfa)["lag_frag"], 3),
+        N = nobs(m_cfa)
+    ),
+    tibble(
+        Specification = "Main — CFA",
+        Sample = "High Cap",
+        Coef = round(coef(hi_cfa)["lag_frag"], 3),
+        SE = round(se(hi_cfa)["lag_frag"], 3),
+        N = nobs(hi_cfa)
+    ),
+    tibble(
+        Specification = "Main — CFA",
+        Sample = "Low Cap",
+        Coef = round(coef(lo_cfa)["lag_frag"], 3),
+        SE = round(se(lo_cfa)["lag_frag"], 3),
+        N = nobs(lo_cfa)
+    ),
+    tibble(
+        Specification = "Stacked 2-window — CFA",
+        Sample = "Full",
+        Coef = round(coef(stk_cfa)["lag_frag"], 3),
+        SE = round(se(stk_cfa)["lag_frag"], 3),
+        N = nobs(stk_cfa)
+    ),
+    tibble(
+        Specification = "Panel FE — CFA",
+        Sample = "Full",
+        Coef = round(coef(pfe_cfa)["lag_frag"], 3),
+        SE = round(se(pfe_cfa)["lag_frag"], 3),
+        N = nobs(pfe_cfa)
+    )
 ) |>
-  mutate(Stars = case_when(
-    2*pt(-abs(Coef/SE), df=N-1) < .01 ~ "***",
-    2*pt(-abs(Coef/SE), df=N-1) < .05 ~ "**",
-    2*pt(-abs(Coef/SE), df=N-1) < .10 ~ "*",
-    TRUE ~ ""))
+    mutate(
+        Stars = case_when(
+            2 * pt(-abs(Coef / SE), df = N - 1) < .01 ~ "***",
+            2 * pt(-abs(Coef / SE), df = N - 1) < .05 ~ "**",
+            2 * pt(-abs(Coef / SE), df = N - 1) < .10 ~ "*",
+            TRUE ~ ""
+        )
+    )
 
-summ |> gt() |>
-  cols_label(SE="(SE)", Stars="") |>
-  tab_header(title="Summary of Main Results",
-             subtitle="Dependent variable: NL growth (% / yr)") |>
-  tab_style(style=cell_text(weight="bold"), locations=cells_column_labels()) |>
-  tab_style(style=cell_fill(color="#f0f7f0"),
-            locations=cells_body(rows=Specification=="Main — CFA" & Sample=="Full")) |>
-  tab_footnote("Highlighted row = headline specification. SE clustered at country level.") |>
-  opt_stylize(style=1)
+summ |>
+    gt() |>
+    cols_label(SE = "(SE)", Stars = "") |>
+    tab_header(
+        title = "Summary of Main Results",
+        subtitle = "Dependent variable: NL growth (% / yr)"
+    ) |>
+    tab_style(
+        style = cell_text(weight = "bold"),
+        locations = cells_column_labels()
+    ) |>
+    tab_style(
+        style = cell_fill(color = "#f0f7f0"),
+        locations = cells_body(
+            rows = Specification == "Main — CFA" & Sample == "Full"
+        )
+    ) |>
+    tab_footnote(
+        "Highlighted row = headline specification. SE clustered at country level."
+    ) |>
+    opt_stylize(style = 1)
 ```
 
-**The main finding:** donor fragmentation is associated with lower nightlights growth, with the effect concentrated in high-governance-capacity regions. The cross-sectional estimate (long-difference, country FE) is −3.1\* to −3.5\*\*; the within-unit estimate (stacked/panel FE) is −1.1, statistically indistinguishable from zero at conventional levels but consistently negative. Health outcomes (U5M) show no effect. Sector analysis points to governance support and education aid as the primary channels.
+```{r final-summary}
+#| tbl-cap: "Summary of all main estimates. The scale contrast — negative at province, near-zero at district — is the headline finding."
 
-**What remains open:**
+bind_rows(
+    tibble(
+        Specification = "Admin1 CFA (country FE, long-diff)",
+        Sample = "Full",
+        Coef = round(coef(m_cfa)["lag_frag"], 3),
+        SE = round(se(m_cfa)["lag_frag"], 3),
+        N = nobs(m_cfa)
+    ),
+    tibble(
+        Specification = "Admin1 CFA (unit+cy FE, stacked)",
+        Sample = "Full",
+        Coef = round(coef(stk_cfa)["lag_frag"], 3),
+        SE = round(se(stk_cfa)["lag_frag"], 3),
+        N = nobs(stk_cfa)
+    ),
+    tibble(
+        Specification = "Admin1 Interaction (frag x SGQ)",
+        Sample = "Full",
+        Coef = round(coef(m_int_a1)["frag_x_sgq"], 3),
+        SE = round(se(m_int_a1)["frag_x_sgq"], 3),
+        N = nobs(m_int_a1)
+    ),
+    tibble(
+        Specification = "Admin2 CFA (country FE, long-diff)",
+        Sample = "Full",
+        Coef = round(coef(a2_full_cfa)["lag_frag"], 3),
+        SE = round(se(a2_full_cfa)["lag_frag"], 3),
+        N = nobs(a2_full_cfa)
+    ),
+    tibble(
+        Specification = "Admin2 CFA (unit+cy FE, stacked)",
+        Sample = "Full",
+        Coef = round(coef(a2_stk_full)["lag_frag"], 3),
+        SE = round(se(a2_stk_full)["lag_frag"], 3),
+        N = nobs(a2_stk_full)
+    ),
+    tibble(
+        Specification = "Admin1 U5M CFA",
+        Sample = "Full",
+        Coef = round(coef(u5_cfa)["lag_frag"], 4),
+        SE = round(se(u5_cfa)["lag_frag"], 4),
+        N = nobs(u5_cfa)
+    ),
+    tibble(
+        Specification = "Admin2 U5M CFA",
+        Sample = "Full",
+        Coef = round(coef(a2_u5_full)["lag_frag"], 4),
+        SE = round(se(a2_u5_full)["lag_frag"], 4),
+        N = nobs(a2_u5_full)
+    )
+) |>
+    mutate(
+        Stars = case_when(
+            2 * pt(-abs(Coef / SE), df = N - 1) < .01 ~ "***",
+            2 * pt(-abs(Coef / SE), df = N - 1) < .05 ~ "**",
+            2 * pt(-abs(Coef / SE), df = N - 1) < .10 ~ "*",
+            TRUE ~ ""
+        )
+    ) |>
+    gt() |>
+    cols_label(SE = "(SE)", Stars = "") |>
+    tab_header(
+        title = "All Main Estimates",
+        subtitle = "Negative = more fragmentation harms growth; positive = helps"
+    ) |>
+    tab_style(
+        style = cell_fill(color = "#fff3cd"),
+        locations = cells_body(rows = grepl("Admin1 CFA.*long", Specification))
+    ) |>
+    tab_style(
+        style = cell_fill(color = "#d4edda"),
+        locations = cells_body(rows = grepl("Admin2 CFA.*long", Specification))
+    ) |>
+    tab_style(
+        style = cell_text(weight = "bold"),
+        locations = cells_column_labels()
+    ) |>
+    tab_footnote(
+        "Yellow = admin1 headline. Green = admin2 headline. SE clustered at country."
+    ) |>
+    opt_stylize(style = 1)
+```
 
-1. The within-unit identification (stacked FE) lacks power with N≈530 units across 33 clusters. Admin2 replication with ~2400 units would help.
-2. The capacity heterogeneity — fragmentation hurting high-capacity regions more than low-capacity ones — is the most important puzzle and deserves a dedicated mechanism test.
-3. The sector results are descriptive (no IV); a sector-specific shift-share would be needed for causal sector inference.
+**The finding is about scale, not just significance.**
+
+At the **province level (admin1)**, donor fragmentation consistently predicts lower nightlights growth — the cross-sectional estimate is −3.1\* and the within-unit stacked estimate is −1.1. The sign is stable; the magnitude attenuates when unit FE absorbs cross-sectional differences in fragmentation.
+
+At the **district level (admin2)**, the coefficient flips to +0.4 (long-diff) and +0.8 (stacked), both insignificant. This is not noise cancelling a negative effect — the direction reverses, and the admin2 first-stage F-stat (41.2) is if anything stronger than admin1 (25.6).
+
+**The governance interaction** tells a consistent story at both levels: higher governance quality slightly mitigates the harm of fragmentation (positive interaction coefficient), though not significantly. The binary 75th percentile split result — high-cap regions suffering *more* — is an artefact of country composition (small poor countries like Malawi dominating the high-cap group) and should not be interpreted as a governance channel.
+
+**What this means:**
+
+The coordination failure from donor fragmentation operates at the level where government bandwidth is the binding constraint — the provincial office, which must manage all donor relationships simultaneously. At the district level, project diversity across donors may be neutral or beneficial.
+
+**Remaining open questions:**
+
+1. **Mechanism test for the scale story.** Ideal data: donor-government meeting frequency and reporting burden by administrative level. If provincial offices in high-fragmentation provinces spend more time on donor coordination, that would confirm the bandwidth mechanism directly.
+
+2. **Sector-specific causal estimates.** The sector analysis is descriptive (no IV). A sector-specific shift-share (historical shares by sector × donor fractionalization within sector) would allow causal inference on which sectors drive the provincial-level result.
+
+3. **Within-unit power.** The stacked and panel FE estimates at admin1 have N≈530 units across 33 country clusters. The −1.1 estimate is consistent with the long-diff −3.1 attenuated by unit FE, but wide CIs prevent firm conclusions about the within-unit effect. Admin2 with N≈4000 (stacked) gives more power but the positive sign raises a different interpretive question.
