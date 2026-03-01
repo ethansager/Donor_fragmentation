@@ -39,6 +39,11 @@ regressions-5year: $(PANEL_DATA_5YEAR)
 # Generate 5-year table outputs
 tables-5year: regressions-5year
 
+# Fresh from-scratch analysis (09_fresh_analysis.r)
+fresh-analysis-5year:
+	@echo "Running fresh analysis pipeline (09_fresh_analysis.r)..."
+	cd ../.. && $(RSCRIPT) 02_scripts/02_analysis/09_fresh_analysis.r
+
 # Generate figures
 figures: $(PANEL_DATA_MAIN)
 	@echo "Generating figures..."
