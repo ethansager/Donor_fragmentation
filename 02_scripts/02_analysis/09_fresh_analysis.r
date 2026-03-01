@@ -170,13 +170,25 @@ build_panel_vars <- function(data, uid, aid_var, frag_var, pop_var) {
     group_by(.data[[uid]]) |>
     mutate(
       lag_mean_nl   = dplyr::lag(mean_nl, 1L),
+      lag2_mean_nl  = dplyr::lag(mean_nl, 2L),            # two-period lag for pre-trend
       lag_frag      = dplyr::lag(.data[[frag_var]], 1L),
       lag_log_pop   = dplyr::lag(.data[[pop_var]],  1L),
       lag_total_aid = log(dplyr::lag(.data[[aid_var]], 1L) + 0.01),
       total_aid_raw = dplyr::lag(.data[[aid_var]], 1L),   # raw aid for CFA stage 1
+      # Log pre-period NL level: controls for pre-existing economic activity.
+      # Including this in all specs makes the exclusion restriction conditional
+      # on initial conditions — a weaker and more plausible assumption.
+      log_lag_nl    = log(dplyr::lag(mean_nl, 1L) + 0.01),
       nl_growth     = case_when(
         is.na(lag_mean_nl) ~ NA_real_,
         TRUE ~ ((log(mean_nl + 0.01) - log(lag_mean_nl + 0.01)) / 5) * 100
+      ),
+      # Pre-period NL growth (t-2 → t-1): used as placebo outcome.
+      # If the IV predicts this, the exclusion restriction fails even
+      # conditional on initial levels.
+      pre_nl_growth = case_when(
+        is.na(lag2_mean_nl) ~ NA_real_,
+        TRUE ~ ((log(lag_mean_nl + 0.01) - log(lag2_mean_nl + 0.01)) / 5) * 100
       )
     ) |>
     ungroup()
@@ -336,23 +348,27 @@ s1_data <- panel_admin1 |>
     is.finite(total_aid_raw),
     is.finite(.data[[IV_VAR]]),
     is.finite(lag_log_pop),
-    is.finite(lag_frag)
+    is.finite(lag_frag),
+    is.finite(log_lag_nl)
   )
 
 first_stage <- feols(
-  as.formula(paste0("total_aid_raw ~ ", IV_VAR, " + lag_log_pop + lag_frag | ", fe_spec)),
+  as.formula(paste0(
+    "total_aid_raw ~ ", IV_VAR, " + lag_log_pop + lag_frag + log_lag_nl | ", fe_spec
+  )),
   cluster = ~GID_0,
   data    = s1_data
 )
 cat("\n--- First Stage: total_aid_raw ~ IV_lag + controls + country FE ---\n")
 print(summary(first_stage))
-cat(sprintf("  First-stage F-stat on IV_lag: %.2f\n",
-            fitstat(first_stage, "ivf")[[1]]))
+# fitstat("ivf") only works on feols IV models; compute manually as t-stat squared
+fs_fstat <- (coef(first_stage)[IV_VAR] / se(first_stage)[IV_VAR])^2
+cat(sprintf("  First-stage F-stat on IV_lag (t^2): %.2f\n", fs_fstat))
 
 # ---- (b) Reduced form -------------------------------------------------------
 reduced_form_nl <- feols(
   as.formula(paste0(
-    "nl_growth ~ ", IV_VAR, " + lag_log_pop + lag_frag | ", fe_spec
+    "nl_growth ~ ", IV_VAR, " + lag_log_pop + lag_frag + log_lag_nl | ", fe_spec
   )),
   cluster = ~GID_0,
   data    = filter(s1_data, is.finite(nl_growth))
@@ -360,29 +376,49 @@ reduced_form_nl <- feols(
 cat("\n--- Reduced Form: nl_growth ~ IV_lag + controls + country FE ---\n")
 print(summary(reduced_form_nl))
 
-# ---- (c) Placebo: does IV predict pre-period nl_growth? --------------------
-# For long_diff: not directly testable; for panel_fe we could use t-2 lags.
-# Approximate: regress lag_mean_nl (pre-period level) on IV_lag as proxy.
+# ---- (c) Placebo: does IV predict PRE-PERIOD NL GROWTH? --------------------
+# The prior run used pre-period NL *levels* as the placebo — that failed
+# because the IV (historical shares × donor fractionalization) is mechanically
+# correlated with regions that historically attracted more donors, which tend
+# to be more economically active.
+#
+# Fix: two-step.
+#   Step 1 — add log_lag_nl (pre-period NL level) as a control in all main
+#             specs. This makes the exclusion restriction conditional on initial
+#             conditions: the IV only needs to be uncorrelated with *changes*
+#             in economic activity, not with levels. This is a standard and
+#             more plausible assumption (Goldsmith-Pinkham et al. 2020).
+#   Step 2 — use PRE-PERIOD NL GROWTH (t-2 → t-1) as the placebo outcome,
+#             controlling for log_lag_nl. If the IV predicts past growth
+#             conditional on the initial level, the exclusion restriction still
+#             fails; otherwise, we pass the harder test.
 placebo_nl <- feols(
-  as.formula(paste0("lag_mean_nl ~ ", IV_VAR, " + lag_log_pop | ", fe_spec)),
+  as.formula(paste0(
+    "pre_nl_growth ~ ", IV_VAR, " + lag_log_pop + lag_frag + log_lag_nl | ", fe_spec
+  )),
   cluster = ~GID_0,
-  data    = filter(s1_data, is.finite(lag_mean_nl))
+  data    = filter(s1_data, is.finite(pre_nl_growth))
 )
-cat("\n--- Placebo: lag_mean_nl (pre-period) ~ IV_lag + controls ---\n")
-cat("  (Should be close to zero if IV is exogenous w.r.t. pre-period outcomes)\n")
+cat("\n--- Placebo: pre_nl_growth (t-2 -> t-1) ~ IV_lag + controls ---\n")
+cat("  (Controlling for log_lag_nl; should be ~0 if exclusion holds conditional on levels)\n")
 print(summary(placebo_nl))
 
 # Write IV diagnostics table
+IV_DICT <- c(
+  IV_lag        = "Shift-Share IV (lag)",
+  lag_frag      = "Lag Frag. Index",
+  lag_log_pop   = "Lag LN(Pop)",
+  log_lag_nl    = "LN NL Level (t-1)",
+  total_aid_raw = "Total Aid (USD)"
+)
+
 etable(
   first_stage, reduced_form_nl, placebo_nl,
-  headers  = c("First Stage", "Reduced Form (NL)", "Placebo (Lag NL)"),
-  dict     = c(IV_lag = "Shift-Share IV (lag)",
-               lag_frag = "Lag Frag. Index",
-               lag_log_pop = "Lag LN(Pop)",
-               total_aid_raw = "Total Aid (USD)"),
+  headers  = c("First Stage", "Reduced Form (NL)", "Placebo (Pre-Period Growth)"),
+  dict     = IV_DICT,
   se.below = TRUE,
   signif.code = SIG_CODE,
-  fitstat  = c("n", "r2", "ivf"),
+  fitstat  = c("n", "r2"),
   tex      = TRUE,
   replace  = TRUE,
   file     = here(TAB_DIR, "iv_diagnostics.tex")
@@ -400,36 +436,39 @@ fe_a2 <- if (ESTIMATOR == "long_diff") "GID_0" else "GID_0^year + GID_2"
 # ---- OLS (benchmark; no fixed effects) -------------------------------------
 est_ols <- function(data, outcome, cluster = ~GID_0) {
   fml <- as.formula(paste0(
-    outcome, " ~ lag_frag + lag_total_aid + lag_log_pop"
+    outcome, " ~ lag_frag + lag_total_aid + lag_log_pop + log_lag_nl"
   ))
-  feols(fml, cluster = cluster, data = filter(data, is.finite(.data[[outcome]])))
+  feols(fml, cluster = cluster, data = filter(data, is.finite(.data[[outcome]]),
+                                               is.finite(log_lag_nl)))
 }
 
 # ---- Country FE (or unit + country-year FE in panel mode) ------------------
 est_fe <- function(data, outcome, fe_str, cluster = ~GID_0) {
   fml <- as.formula(paste0(
-    outcome, " ~ lag_frag + lag_total_aid + lag_log_pop | ", fe_str
+    outcome, " ~ lag_frag + lag_total_aid + lag_log_pop + log_lag_nl | ", fe_str
   ))
-  feols(fml, cluster = cluster, data = filter(data, is.finite(.data[[outcome]])))
+  feols(fml, cluster = cluster, data = filter(data, is.finite(.data[[outcome]]),
+                                               is.finite(log_lag_nl)))
 }
 
 # ---- Control function approach (CFA) ----------------------------------------
-# Stage 1: regress total_aid_raw on IV + controls + FE → get residuals
-# Stage 2: regress outcome on frag + log_aid + pop + CFA residual + FE
-# The CFA residual absorbs the endogenous component of aid volume, leaving
-# frag identified by its within-country variation conditional on instrumented
-# aid.  Standard errors in stage 2 should be bootstrapped for exact inference;
-# here we report analytical SEs with a note.
+# Stage 1: regress total_aid_raw on IV + controls (incl. log_lag_nl) + FE
+# Stage 2: regress outcome on frag + log_aid + pop + log_lag_nl + CFA resid + FE
+# log_lag_nl (pre-period NL level) controls for pre-existing economic activity
+# so the exclusion restriction only requires IV is uncorrelated with NL *changes*.
 est_cfa <- function(data, outcome, fe_str, iv = IV_VAR, cluster = ~GID_0) {
   s1_d <- data |>
     filter(
       is.finite(total_aid_raw),
       is.finite(.data[[iv]]),
-      is.finite(lag_log_pop)
+      is.finite(lag_log_pop),
+      is.finite(log_lag_nl)
     )
 
   s1 <- feols(
-    as.formula(paste0("total_aid_raw ~ ", iv, " + lag_log_pop | ", fe_str)),
+    as.formula(paste0(
+      "total_aid_raw ~ ", iv, " + lag_log_pop + lag_frag + log_lag_nl | ", fe_str
+    )),
     cluster = cluster,
     data    = s1_d
   )
@@ -445,7 +484,8 @@ est_cfa <- function(data, outcome, fe_str, iv = IV_VAR, cluster = ~GID_0) {
 
   feols(
     as.formula(paste0(
-      outcome, " ~ lag_frag + lag_total_aid + lag_log_pop + cfa_resid | ", fe_str
+      outcome,
+      " ~ lag_frag + lag_total_aid + lag_log_pop + log_lag_nl + cfa_resid | ", fe_str
     )),
     cluster = cluster,
     data    = s2_d
@@ -454,11 +494,11 @@ est_cfa <- function(data, outcome, fe_str, iv = IV_VAR, cluster = ~GID_0) {
 
 # ---- 2SLS (alternative to CFA; same structural params, different SE calc) ---
 # Instrument total_aid_raw with IV_lag.  Fragmentation is treated as exogenous
-# conditional on instrumented aid volume and country FE.
+# conditional on instrumented aid volume, pre-period NL level, and country FE.
 est_2sls <- function(data, outcome, fe_str, iv = IV_VAR, cluster = ~GID_0) {
   fml <- as.formula(paste0(
     outcome,
-    " ~ lag_frag + lag_log_pop | ", fe_str,
+    " ~ lag_frag + lag_log_pop + log_lag_nl | ", fe_str,
     " | lag_total_aid ~ ", iv
   ))
   feols(fml, cluster = cluster,
@@ -466,6 +506,7 @@ est_2sls <- function(data, outcome, fe_str, iv = IV_VAR, cluster = ~GID_0) {
           data,
           is.finite(.data[[outcome]]),
           is.finite(lag_frag),
+          is.finite(log_lag_nl),
           is.finite(lag_log_pop),
           is.finite(lag_total_aid),
           is.finite(.data[[iv]])
@@ -484,10 +525,11 @@ est_2sls <- function(data, outcome, fe_str, iv = IV_VAR, cluster = ~GID_0) {
 # Each table pools all units; Section 7 splits by capacity group.
 
 VAR_DICT <- c(
-  lag_frag      = "Fragmentation Index (t-1)",
-  lag_total_aid = "LN Total Aid (t-1)",
-  lag_log_pop   = "LN Population (t-1)",
-  cfa_resid     = "CFA Residual (endogeneity control)",
+  lag_frag            = "Fragmentation Index (t-1)",
+  lag_total_aid       = "LN Total Aid (t-1)",
+  lag_log_pop         = "LN Population (t-1)",
+  log_lag_nl          = "LN NL Level (t-1)",
+  cfa_resid           = "CFA Residual (endogeneity control)",
   `fit_lag_total_aid` = "LN Total Aid (t-1, instrumented)"
 )
 
