@@ -729,6 +729,74 @@ etable(
 )
 cat("  Estimator robustness table written.\n")
 
+# ---- 8e: Stacked 2-window estimator -----------------------------------------
+# The long-difference uses only the 2010→2015 window (one obs per unit; country
+# FE only — can't absorb unit-level heterogeneity within countries).  Full panel
+# FE uses all four transitions including noisy pre-2005 DMSP nightlights.
+#
+# Stacked 2-window is the preferred compromise:
+#   - Keep years 2010 AND 2015 from the full panel build (lags from 2005/2010).
+#   - Both windows sit within the post-2000 DMSP era or VIIRS — cleaner data.
+#   - Include UNIT FE (GID_1) to remove time-invariant unit confounders that
+#     country FE alone cannot absorb.
+#   - Include country-year FE (GID_0^year) for common shocks.
+#   - Treatment variation: within-unit change in fragmentation 2005→2015.
+#   - Identification: within-unit, across-window change in fragmentation
+#     compared with units in the same country-period.
+cat("\n=== Robustness 8e: Stacked 2-window estimator (2010 + 2015, unit FE) ===\n")
+
+stacked_a1 <- raw_admin1 |>
+  norm_nl_cols() |>
+  build_panel_vars("GID_1", "total_aid_admin1",
+                   "frag_index_admin1", "ln_pop_admin1") |>
+  winsorise_outcome("nl_growth") |>
+  add_capacity("mean_sgq_admin1") |>
+  filter(year %in% c(2010L, 2015L), !is.na(lag_frag), !is.na(nl_growth))
+
+cat(sprintf(
+  "  Stacked sample: %d obs, %d units (%d countries)\n",
+  nrow(stacked_a1),
+  n_distinct(stacked_a1$GID_1),
+  n_distinct(stacked_a1$GID_0)
+))
+
+fe_stacked <- "GID_0^year + GID_1"   # country-year + unit FE
+stk_cfa_nl <- est_cfa(stacked_a1, "nl_growth", fe_stacked)
+
+cat(sprintf(
+  "  Stacked CFA coef on lag_frag: %.4f (SE: %.4f, N = %d)\n",
+  coef(stk_cfa_nl)["lag_frag"],
+  se(stk_cfa_nl)["lag_frag"],
+  nobs(stk_cfa_nl)
+))
+
+# Capacity heterogeneity within stacked sample
+stk_hi <- filter(stacked_a1, high_cap == 1L)
+stk_lo <- filter(stacked_a1, high_cap == 0L)
+stk_hi_cfa <- est_cfa(stk_hi, "nl_growth", fe_stacked)
+stk_lo_cfa <- est_cfa(stk_lo, "nl_growth", fe_stacked)
+
+cat(sprintf(
+  "  Stacked High cap: %.4f (SE: %.4f)  |  Low cap: %.4f (SE: %.4f)\n",
+  coef(stk_hi_cfa)["lag_frag"], se(stk_hi_cfa)["lag_frag"],
+  coef(stk_lo_cfa)["lag_frag"], se(stk_lo_cfa)["lag_frag"]
+))
+
+etable(
+  res_nl_a1$cfa, stk_cfa_nl,
+  stk_hi_cfa, stk_lo_cfa,
+  headers     = c("Long-Diff (country FE)", "Stacked (unit+cy FE)",
+                  "Stacked High Cap",        "Stacked Low Cap"),
+  dict        = VAR_DICT,
+  se.below    = TRUE,
+  signif.code = SIG_CODE,
+  fitstat     = c("n", "r2"),
+  tex         = TRUE,
+  replace     = TRUE,
+  file        = here(TAB_DIR, "robust_stacked_window.tex")
+)
+cat("  Stacked-window table written.\n")
+
 # =============================================================================
 # SECTION 9: Figures
 # =============================================================================
