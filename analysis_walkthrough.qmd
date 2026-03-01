@@ -1,0 +1,675 @@
+---
+title: "Competition or Chaos?"
+subtitle: "Donor Fragmentation and Aid Effectiveness at the Sub-National Level — Methods and Results"
+date: today
+format:
+  html:
+    toc: true
+    toc-depth: 3
+    toc-float: true
+    number-sections: true
+    theme: flatly
+    code-fold: true
+    embed-resources: true
+    fig-width: 7
+    fig-height: 4.5
+execute:
+  warning: false
+  message: false
+  echo: false
+---
+
+```{r setup}
+if (!require("pacman")) install.packages("pacman")
+pacman::p_load(tidyverse, here, fixest, ggdag, dagitty,
+               modelsummary, kableExtra, gt, patchwork)
+
+# ── Data prep helpers (mirrors 09_fresh_analysis.r) ─────────────────────────
+norm_nl <- function(d) {
+  if (!"mean_nl" %in% names(d) && "mean" %in% names(d)) d <- rename(d, mean_nl = mean)
+  d
+}
+build_vars <- function(data, uid, aid_var, frag_var, pop_var) {
+  data |> arrange(.data[[uid]], year) |> group_by(.data[[uid]]) |>
+    mutate(
+      lag_mean_nl   = dplyr::lag(mean_nl, 1L),
+      lag2_mean_nl  = dplyr::lag(mean_nl, 2L),
+      lag_frag      = dplyr::lag(.data[[frag_var]], 1L),
+      lag_log_pop   = dplyr::lag(.data[[pop_var]], 1L),
+      lag_total_aid = log(dplyr::lag(.data[[aid_var]], 1L) + 0.01),
+      total_aid_raw = dplyr::lag(.data[[aid_var]], 1L),
+      log_lag_nl    = log(dplyr::lag(mean_nl, 1L) + 0.01),
+      nl_growth     = case_when(is.na(lag_mean_nl) ~ NA_real_,
+        TRUE ~ ((log(mean_nl+0.01) - log(lag_mean_nl+0.01)) / 5) * 100),
+      pre_nl_growth = case_when(is.na(lag2_mean_nl) ~ NA_real_,
+        TRUE ~ ((log(lag_mean_nl+0.01) - log(lag2_mean_nl+0.01)) / 5) * 100)
+    ) |> ungroup()
+}
+winsorise <- function(d, v, lo=0.05, hi=0.95) {
+  vals <- d[[v]]; if (sum(is.finite(vals)) < 20) return(d)
+  q <- quantile(vals, c(lo,hi), na.rm=TRUE)
+  d[[v]] <- pmax(pmin(vals, q[2]), q[1]); d
+}
+add_cap <- function(d, sgq, pct=0.75) {
+  cut <- quantile(d[[sgq]], pct, na.rm=TRUE)
+  mutate(d, high_cap = as.integer(.data[[sgq]] > cut))
+}
+to_ld <- function(d, uid) {
+  d |> group_by(.data[[uid]]) |>
+    filter(year == max(year, na.rm=TRUE)) |> ungroup()
+}
+
+# ── Load & build panels ──────────────────────────────────────────────────────
+raw_a1 <- read_csv(
+  here("01_panel_data","panel_aid_admin1_fin_5year_1995_2015.csv"),
+  show_col_types = FALSE) |> norm_nl()
+
+panel_a1 <- raw_a1 |>
+  build_vars("GID_1","total_aid_admin1","frag_index_admin1","ln_pop_admin1") |>
+  winsorise("nl_growth") |> add_cap("mean_sgq_admin1") |>
+  to_ld("GID_1")
+
+hi_a1 <- filter(panel_a1, high_cap == 1L)
+lo_a1 <- filter(panel_a1, high_cap == 0L)
+
+# ── Estimation helpers ───────────────────────────────────────────────────────
+est_ols <- function(d, y) feols(
+  as.formula(paste0(y," ~ lag_frag + lag_total_aid + lag_log_pop + log_lag_nl")),
+  cluster=~GID_0, data=filter(d, is.finite(.data[[y]]), is.finite(log_lag_nl)))
+
+est_fe <- function(d, y) feols(
+  as.formula(paste0(y," ~ lag_frag + lag_total_aid + lag_log_pop + log_lag_nl | GID_0")),
+  cluster=~GID_0, data=filter(d, is.finite(.data[[y]]), is.finite(log_lag_nl)))
+
+est_cfa <- function(d, y, fe="GID_0") {
+  s1d <- filter(d, is.finite(total_aid_raw), is.finite(IV_lag),
+                is.finite(lag_log_pop), is.finite(log_lag_nl))
+  s1  <- feols(as.formula(paste0(
+    "total_aid_raw ~ IV_lag + lag_log_pop + lag_frag + log_lag_nl | ", fe)),
+    cluster=~GID_0, data=s1d)
+  s2d <- mutate(s1d, cfa_resid=resid(s1)) |>
+    filter(is.finite(.data[[y]]), is.finite(lag_frag),
+           is.finite(lag_total_aid), is.finite(cfa_resid))
+  feols(as.formula(paste0(
+    y," ~ lag_frag + lag_total_aid + lag_log_pop + log_lag_nl + cfa_resid | ", fe)),
+    cluster=~GID_0, data=s2d)
+}
+
+est_2sls <- function(d, y, fe="GID_0") feols(
+  as.formula(paste0(
+    y," ~ lag_frag + lag_log_pop + log_lag_nl | ", fe,
+    " | lag_total_aid ~ IV_lag")),
+  cluster=~GID_0,
+  data=filter(d, is.finite(.data[[y]]), is.finite(lag_frag),
+              is.finite(log_lag_nl), is.finite(lag_total_aid), is.finite(IV_lag)))
+
+# ── Run all models ───────────────────────────────────────────────────────────
+m_ols  <- est_ols (panel_a1, "nl_growth")
+m_fe   <- est_fe  (panel_a1, "nl_growth")
+m_cfa  <- est_cfa (panel_a1, "nl_growth")
+m_2sls <- est_2sls(panel_a1, "nl_growth")
+
+hi_cfa  <- est_cfa(hi_a1, "nl_growth"); lo_cfa  <- est_cfa(lo_a1, "nl_growth")
+hi_2sls <- est_2sls(hi_a1,"nl_growth"); lo_2sls <- est_2sls(lo_a1,"nl_growth")
+
+u5_ols  <- est_ols(filter(panel_a1,!is.na(u5m)),"u5m")
+u5_fe   <- est_fe (filter(panel_a1,!is.na(u5m)),"u5m")
+u5_cfa  <- est_cfa(filter(panel_a1,!is.na(u5m)),"u5m")
+hi_u5   <- est_cfa(filter(hi_a1,!is.na(u5m)),"u5m")
+lo_u5   <- est_cfa(filter(lo_a1,!is.na(u5m)),"u5m")
+
+# First stage for diagnostics
+s1_data <- panel_a1 |>
+  filter(is.finite(total_aid_raw), is.finite(IV_lag),
+         is.finite(lag_log_pop), is.finite(log_lag_nl))
+first_stage <- feols(
+  total_aid_raw ~ IV_lag + lag_log_pop + lag_frag + log_lag_nl | GID_0,
+  cluster=~GID_0, data=s1_data)
+rf_nl <- feols(
+  nl_growth ~ IV_lag + lag_log_pop + lag_frag + log_lag_nl | GID_0,
+  cluster=~GID_0, data=filter(s1_data, is.finite(nl_growth)))
+placebo <- feols(
+  pre_nl_growth ~ IV_lag + lag_log_pop + lag_frag + log_lag_nl | GID_0,
+  cluster=~GID_0, data=filter(s1_data, is.finite(pre_nl_growth)))
+fs_fstat <- (coef(first_stage)["IV_lag"] / se(first_stage)["IV_lag"])^2
+
+# Stacked 2-window
+stacked_a1 <- raw_a1 |> norm_nl() |>
+  build_vars("GID_1","total_aid_admin1","frag_index_admin1","ln_pop_admin1") |>
+  winsorise("nl_growth") |> add_cap("mean_sgq_admin1") |>
+  filter(year %in% c(2010L, 2015L), !is.na(lag_frag), !is.na(nl_growth))
+stk_cfa    <- est_cfa(stacked_a1, "nl_growth", "GID_0^year + GID_1")
+stk_hi_cfa <- est_cfa(filter(stacked_a1, high_cap==1L), "nl_growth", "GID_0^year + GID_1")
+stk_lo_cfa <- est_cfa(filter(stacked_a1, high_cap==0L), "nl_growth", "GID_0^year + GID_1")
+
+panel_pfe <- raw_a1 |> norm_nl() |>
+  build_vars("GID_1","total_aid_admin1","frag_index_admin1","ln_pop_admin1") |>
+  winsorise("nl_growth") |> add_cap("mean_sgq_admin1") |>
+  group_by(GID_1) |> filter(!is.na(lag_frag)) |> ungroup()
+pfe_cfa <- est_cfa(panel_pfe, "nl_growth", "GID_0^year + GID_1")
+
+# Sector models (FE only — no IV for sector files)
+sector_paths <- list(
+  health      = here("01_panel_data","panel_aid_admin1_health_5year_1995_2015.csv"),
+  education   = here("01_panel_data","panel_aid_admin1_educ_5year_1995_2015.csv"),
+  infra       = here("01_panel_data","panel_aid_admin1_infra_5year_1995_2015.csv"),
+  gov_support = here("01_panel_data","panel_aid_admin1_gov_support_5year_1995_2015.csv"),
+  humanitarian= here("01_panel_data","panel_aid_admin1_humanitarian_5year_1995_2015.csv")
+)
+sector_labels <- c(health="Health", education="Education", infra="Infrastructure",
+                   gov_support="Governance", humanitarian="Humanitarian")
+
+run_sector <- function(path) {
+  d <- read_csv(path, show_col_types=FALSE) |> norm_nl() |>
+    build_vars("GID_1","total_aid_admin1","frag_index_admin1","ln_pop_admin1") |>
+    winsorise("nl_growth") |> add_cap("mean_sgq_admin1") |> to_ld("GID_1")
+  list(
+    full = tryCatch(est_fe(d,"nl_growth"), error=function(e) NULL),
+    hi   = tryCatch(est_fe(filter(d,high_cap==1L),"nl_growth"), error=function(e) NULL),
+    lo   = tryCatch(est_fe(filter(d,high_cap==0L),"nl_growth"), error=function(e) NULL)
+  )
+}
+sector_mods <- lapply(sector_paths, run_sector)
+
+DICT <- c(lag_frag="Frag. Index (t−1)", lag_total_aid="ln Aid (t−1)",
+          lag_log_pop="ln Pop (t−1)", log_lag_nl="ln NL Level (t−1)",
+          cfa_resid="CFA Residual", fit_lag_total_aid="ln Aid (instrumented)")
+SIG  <- c("***"=0.01,"**"=0.05,"*"=0.1)
+```
+
+# Research Question
+
+Aid donors operating in the same region create coordination challenges. When many donors simultaneously fund competing programmes, governments may face fragmented priorities, duplicated overhead, and conflicting conditionality. But donor competition may also bring useful diversity of expertise and reduce the rents any single donor can extract. The question is empirical: **does donor fragmentation improve or worsen local aid effectiveness, and does local governance capacity moderate this relationship?**
+
+We measure fragmentation at the sub-national level (Admin1 regions across ~40 Sub-Saharan African countries), using a Bartik-style shift-share instrument to isolate exogenous variation in total aid flows while treating fragmentation as the main explanatory variable.
+
+# Data Structure
+
+The panel covers **1995–2015** in five-year buckets (1995, 2000, 2005, 2010, 2015). Each row is one region-bucket. Aid and fragmentation variables are aggregated within the 5-year window; nightlights and U5 mortality are the outcomes.
+
+```{r desc-stats}
+#| echo: false
+desc_vars <- list(
+  "NL Growth (% / yr)"       = panel_a1$nl_growth,
+  "U5 Mortality"             = panel_a1$u5m,
+  "Fragmentation Index"      = panel_a1$lag_frag,
+  "Total Aid (USD, million)" = panel_a1$total_aid_admin1 / 1e6,
+  "State Gov. Quality"       = panel_a1$mean_sgq_admin1,
+  "Shift-Share IV (lag)"     = panel_a1$IV_lag
+)
+
+make_row <- function(v, label) {
+  tibble(Variable=label, N=sum(!is.na(v)),
+         Mean=round(mean(v,na.rm=TRUE),3), SD=round(sd(v,na.rm=TRUE),3),
+         P25=round(quantile(v,.25,na.rm=TRUE),3),
+         P75=round(quantile(v,.75,na.rm=TRUE),3))
+}
+bind_rows(mapply(make_row, desc_vars, names(desc_vars), SIMPLIFY=FALSE)) |>
+  gt() |>
+  tab_header(title="Table 1: Summary Statistics",
+             subtitle="Admin1 long-difference sample (N=540 regions, 33 countries)") |>
+  fmt_number(columns=c(Mean,SD,P25,P75), decimals=3) |>
+  cols_align("center", columns=c(N,Mean,SD,P25,P75)) |>
+  tab_style(style=cell_text(weight="bold"), locations=cells_column_labels()) |>
+  opt_stylize(style=1)
+```
+
+**Key variable:** `frag_index_admin1` is constructed as one minus the Herfindahl-Hirschman Index (HHI) over donor shares within a region-bucket. Higher values indicate more dispersed, fragmented donors; lower values indicate a single dominant donor.
+
+$$\text{Frag}_{it} = 1 - \text{HHI}_{it} = 1 - \sum_j \left(\frac{\text{Aid}_{ijt}}{\text{Aid}_{it}}\right)^2$$
+
+**Governance capacity split:** regions above the 75th percentile of average Afrobarometer state governance quality (`mean_sgq`) are classified as **High Capacity**; the rest as **Low Capacity**.
+
+# The Identification Problem
+
+The naive OLS regression of outcomes on fragmentation is biased. Donors do not allocate aid randomly — they select into regions based on observed and unobserved characteristics that also affect outcomes.
+
+```{r dag-endogeneity}
+#| fig-cap: "DAG 1: The identification problem. Donors select into regions (Aid ← U → Outcome), creating confounding. Fragmentation is correlated with total aid volume (both depend on how many donors enter). Country fixed effects (α_c) absorb the average country-level confounder but leave within-country unobservables unresolved."
+#| fig-height: 4
+
+coords <- list(
+  x = c(Frag=1, Aid=3, Outcome=5, U=3, Country=3),
+  y = c(Frag=2, Aid=2, Outcome=2, U=0.5, Country=3.5)
+)
+dag1 <- dagify(
+  Outcome ~ Frag + Aid + U,
+  Aid     ~ U + Country,
+  Frag    ~ Aid,
+  U       ~ Country,
+  labels  = c(Frag="Fragmentation\n(treatment)",
+              Aid="Total Aid\n(volume)",
+              Outcome="NL Growth\n(outcome)",
+              U="Unobserved\nRegion Quality",
+              Country="Country FE\n(α_c)"),
+  exposure = "Frag", outcome = "Outcome",
+  coords   = coords
+)
+
+ggdag_status(dag1, use_labels="label", text=FALSE) +
+  theme_dag() +
+  scale_color_manual(values=c(exposure="#2166ac", outcome="#d73027",
+                               adjusted="#4dac26", unadjusted="#f4a582"),
+                     guide="none") +
+  labs(title=NULL)
+```
+
+The problem has two parts:
+
+1. **Aid volume endogeneity:** donors target regions based on unobserved absorptive capacity ($U$), so $\text{Aid} \leftarrow U \rightarrow \text{Outcome}$.
+
+2. **Fragmentation-aid correlation:** fragmentation is mechanically correlated with the number of donors, which is correlated with total aid volume. Controlling for aid volume in an OLS regression introduces collider bias if aid is endogenous.
+
+# The Shift-Share Instrument
+
+We instrument **total aid volume** with a Bartik-style shift-share IV. The key idea: interact each region's historical exposure to each donor (the *share*) with time-varying changes in donor government fractionalization (the *shift*).
+
+$$\text{IV}_{it} = \sum_{j} \underbrace{\bar{p}_{ij}}_{\text{historical share}} \times \underbrace{\text{Frac}_{jt}}_{\text{donor gov. fractionalization}}$$
+
+- $\bar{p}_{ij}$ = probability region $i$ received aid from donor $j$ in any period (time-invariant share)
+- $\text{Frac}_{jt}$ = legislative fractionalization of donor $j$'s government in period $t$ (from DPI)
+
+The shift-share IV enters the analysis **lagged one period** (`IV_lag`), so the relevant IV for the 2010–2015 window is the 2005–2010 fractionalization-weighted exposure.
+
+```{r dag-iv}
+#| fig-cap: "DAG 2: The shift-share IV. Historical shares (p̄) and donor government fractionalization (Frac) jointly determine the instrument. The IV affects outcomes only through aid volume (exclusion restriction). Country FE absorbs the direct effect of shares on outcomes; conditional on country FE and pre-period NL level, the IV is assumed orthogonal to unobservables."
+#| fig-height: 4
+
+coords2 <- list(
+  x = c(Shares=1, Frac=1, IV=2.5, Aid=4, Outcome=5.5, U=4),
+  y = c(Shares=3, Frac=1, IV=2,   Aid=2, Outcome=2,   U=0.5)
+)
+dag2 <- dagify(
+  Outcome ~ Aid + U + Frag,
+  Aid     ~ IV + U,
+  IV      ~ Shares + Frac,
+  Frag    ~ Aid,
+  labels  = c(Shares="Historical\nShares (p̄)",
+              Frac="Donor Gov.\nFractionalization",
+              IV="Shift-Share\nIV",
+              Aid="Total Aid",
+              Outcome="NL Growth",
+              U="Unobserved\nRegion Quality",
+              Frag="Fragmentation"),
+  exposure="IV", outcome="Outcome",
+  latent="U",
+  coords=coords2
+)
+
+ggdag_status(dag2, use_labels="label", text=FALSE) +
+  annotate("label", x=3.75, y=0.8, label="Exclusion\nrestriction:\nIV ⊥ U | X,α_c",
+           size=3, colour="#d73027", fill="white", label.size=0.3) +
+  theme_dag() +
+  scale_color_manual(values=c(exposure="#2166ac", outcome="#d73027",
+                               latent="#f4a582", unadjusted="grey70"),
+                     guide="none") +
+  labs(title=NULL)
+```
+
+**Exclusion restriction:** conditional on country FE and pre-period NL level (`log_lag_nl`), the IV should be uncorrelated with unobserved determinants of NL growth. We add the pre-period NL level as a control following Goldsmith-Pinkham et al. (2020): the IV is allowed to correlate with initial economic conditions (the *shares* reflect historical donor presence), but only needs to be uncorrelated with *changes* in economic activity.
+
+# Estimators
+
+We estimate four progressively more demanding specifications.
+
+## Benchmark OLS
+
+No fixed effects. Identifies off cross-sectional variation across all regions and periods.
+
+$$y_{it} = \alpha + \beta \underbrace{\text{Frag}_{i,t-1}}_{\text{treatment}} + \gamma \ln\text{Aid}_{i,t-1} + \delta \ln\text{Pop}_{i,t-1} + \theta \ln\text{NL}_{i,t-1} + \varepsilon_{it}$$
+
+Expected to be biased: regions with more donors may differ systematically from those with fewer.
+
+## Country Fixed Effects
+
+Adds country dummies $\alpha_c$ to compare regions within the same country.
+
+$$y_{it} = \alpha_c + \beta\,\text{Frag}_{i,t-1} + \gamma \ln\text{Aid}_{i,t-1} + \delta \ln\text{Pop}_{i,t-1} + \theta \ln\text{NL}_{i,t-1} + \varepsilon_{it}$$
+
+This removes all time-invariant, country-level confounders. The remaining concern is within-country selection: donors may target better-performing regions within countries.
+
+## Control Function Approach (CFA)
+
+Instruments **total aid volume** with the shift-share IV, leaving fragmentation as the regressor of interest. This is the headline specification.
+
+**Stage 1** — regress total aid on the IV and controls:
+
+$$\underbrace{\text{Aid}_{i,t-1}}_{\text{endogenous}} = \mu_c + \pi\,\text{IV}_{i,t-1} + \phi\,\text{Frag}_{i,t-1} + \kappa \ln\text{Pop}_{i,t-1} + \lambda \ln\text{NL}_{i,t-1} + \underbrace{v_{it}}_{\text{residual}}$$
+
+**Stage 2** — include the first-stage residual $\hat{v}_{it}$ as an additional control:
+
+$$y_{it} = \alpha_c + \beta\,\text{Frag}_{i,t-1} + \gamma \ln\text{Aid}_{i,t-1} + \delta \ln\text{Pop}_{i,t-1} + \theta \ln\text{NL}_{i,t-1} + \underbrace{\rho\,\hat{v}_{it}}_{\text{endogeneity\;control}} + \varepsilon_{it}$$
+
+The residual $\hat{v}_{it}$ absorbs the endogenous component of aid volume. If $\rho \approx 0$, aid is approximately exogenous conditional on the other controls, and the CFA estimate equals the country FE estimate.
+
+```{r dag-cfa}
+#| fig-cap: "DAG 3: How the CFA works. The first-stage residual v̂ captures the variation in Aid that flows through unobservables U. Including v̂ in stage 2 blocks the U → Aid → Outcome back-door path, leaving Fragmentation identified off its direct variation conditional on instrumented aid."
+#| fig-height: 3.5
+
+coords3 <- list(
+  x = c(IV=1, Aid=3, Resid=3, Frag=2, Outcome=5, U=4),
+  y = c(IV=2, Aid=2, Resid=1, Frag=3, Outcome=2, U=1)
+)
+dag3 <- dagify(
+  Outcome ~ Frag + Aid + U,
+  Aid     ~ IV + U,
+  Resid   ~ U,
+  Outcome ~ Resid,
+  labels  = c(IV="Shift-Share\nIV",
+              Aid="Total Aid\n(instrumented)",
+              Resid="First-Stage\nResidual v̂",
+              Frag="Fragmentation\n(identified here)",
+              Outcome="NL Growth",
+              U="Unobservables\nU"),
+  exposure="Frag", outcome="Outcome",
+  coords=coords3
+)
+
+ggdag_status(dag3, use_labels="label", text=FALSE) +
+  theme_dag() +
+  scale_color_manual(values=c(exposure="#2166ac", outcome="#d73027",
+                               unadjusted="grey70"),
+                     guide="none") +
+  labs(title=NULL)
+```
+
+## 2SLS
+
+Alternative implementation of the same structural model. Instruments $\ln\text{Aid}_{i,t-1}$ directly with $\text{IV}_{i,t-1}$ via the `feols` IV syntax. Should give the same point estimate as the CFA but uses a different variance estimator (2SLS vs. plug-in). Convergence of CFA and 2SLS estimates is a useful specification check.
+
+$$y_{it} = \alpha_c + \beta\,\text{Frag}_{i,t-1} + \gamma \underbrace{\widehat{\ln\text{Aid}}_{i,t-1}}_{\text{IV-predicted}} + \delta \ln\text{Pop}_{i,t-1} + \theta \ln\text{NL}_{i,t-1} + \varepsilon_{it}$$
+
+## Long-Difference Sample
+
+All four specifications are estimated on the **long-difference** sample: for each Admin1 region, we retain only the terminal observation (year = 2015), with all right-hand-side variables measured at 2010. This limits each region to one observation, removing within-unit variation but reducing attenuation bias from year-to-year measurement error in nightlights. This trades off internal validity (less noise) against external validity (one window only). See the robustness section for the stacked 2-window alternative.
+
+# IV Diagnostics
+
+Before examining structural results, we verify instrument relevance and test the exclusion restriction.
+
+```{r iv-table}
+#| tbl-cap: "IV Diagnostics. First Stage: total aid on IV_lag. Reduced Form: NL growth on IV_lag. Placebo: pre-period NL growth (t−2 → t−1) on IV_lag, conditioning on pre-period NL level."
+
+etable(first_stage, rf_nl, placebo,
+       headers  = c("(1) First Stage","(2) Reduced Form","(3) Placebo"),
+       dict     = c(IV_lag="Shift-Share IV (lag)", lag_frag="Frag. Index (t−1)",
+                    lag_log_pop="ln Pop (t−1)", log_lag_nl="ln NL Level (t−1)",
+                    total_aid_raw="Total Aid (USD)"),
+       se.below=TRUE, signif.code=SIG, fitstat=c("n","r2"))
+```
+
+**Reading the table:**
+
+- **Column (1) — First Stage:** The IV strongly predicts total aid: $\hat{\pi} =$ `r formatC(coef(first_stage)["IV_lag"], format="f", digits=0)` USD (t = `r round(coef(first_stage)["IV_lag"]/se(first_stage)["IV_lag"], 2)`). First-stage F-statistic ($t^2$) = **`r round(fs_fstat, 1)`**, well above the Stock-Yogo threshold of 10. The instrument is relevant.
+
+- **Column (2) — Reduced Form:** The IV has a negative but insignificant effect on NL growth ($p =$ `r round(2*pt(-abs(coef(rf_nl)["IV_lag"]/se(rf_nl)["IV_lag"]), df=nobs(rf_nl)-1), 2)`). A weak reduced form with a strong first stage implies the structural effect of aid volume on NL growth is itself small — consistent with the near-zero instrumented aid coefficient in the main regressions.
+
+- **Column (3) — Placebo:** We regress **pre-period NL growth** (growth in the $t-2$ to $t-1$ window) on the current-period IV, conditioning on the pre-period NL level. The IV coefficient is `r round(coef(placebo)["IV_lag"], 3)` ($p =$ `r round(2*pt(-abs(coef(placebo)["IV_lag"]/se(placebo)["IV_lag"]), df=nobs(placebo)-1), 2)`). The placebo passes: the instrument does not predict past growth conditional on initial conditions.
+
+> **Note on the original placebo failure.** An earlier version of this diagnostic regressed pre-period NL *levels* (not growth) on the IV — that failed because Bartik shares are mechanically correlated with regions that historically attracted donors, which tend to have higher baseline economic activity. Adding `log_lag_nl` as a control (following Goldsmith-Pinkham et al. 2020) makes the exclusion restriction conditional on initial levels rather than unconditional, restoring validity.
+
+# Main Results: Nightlights Growth
+
+```{r main-table}
+#| tbl-cap: "Table 2: Effect of donor fragmentation on NL growth (% / yr). Admin1, long-difference sample. Clustered SE at country level in parentheses."
+
+etable(m_ols, m_fe, m_cfa, m_2sls,
+       headers=c("(1) OLS","(2) Country FE","(3) CFA","(4) 2SLS"),
+       dict=DICT, se.below=TRUE, signif.code=SIG, fitstat=c("n","r2"))
+```
+
+**What the table says:**
+
+The coefficient on the fragmentation index is **negative and grows in precision** as identification tightens. Moving across columns: OLS (-3.6, insignificant) → Country FE (-3.1\*) → CFA (-3.1\*) → 2SLS (-3.5\*\*).
+
+Key observations:
+
+1. **The CFA residual is effectively zero** (coefficient $\approx 10^{-10}$). Once you condition on country FE and pre-period NL level, total aid volume has no detectable endogeneity. This means the OLS-on-aid and CFA estimates are nearly identical — the concern about aid selection is absorbed by the controls. This is reassuring, not alarming: it validates the country FE specification.
+
+2. **CFA ≈ 2SLS.** Both structural approaches give the same point estimate (−3.1 vs −3.5). When these converge, it confirms the IV is doing the same work in both frameworks.
+
+3. **Magnitude.** A one-unit increase in the fragmentation index — moving from a single dominant donor (Frag = 0) to perfectly equal donors (Frag = 1) — reduces NL growth by about **3 percentage points per year**. Given mean NL growth of 4.9 pp/yr, the effect is economically large. However, few regions move the full range; the interquartile range of `lag_frag` is `r round(diff(quantile(panel_a1$lag_frag, c(.25,.75), na.rm=TRUE)), 2)`, so the typical within-country contrast is about `r round(diff(quantile(panel_a1$lag_frag, c(.25,.75), na.rm=TRUE)) * abs(coef(m_fe)["lag_frag"]), 1)` pp/yr.
+
+# Heterogeneity: Governance Capacity
+
+```{r het-table}
+#| tbl-cap: "Table 3: Effect of fragmentation by governance capacity. Regions above the 75th percentile of Afrobarometer state governance quality = High Capacity. CFA and 2SLS specifications, country FE."
+
+etable(hi_cfa, lo_cfa, hi_2sls, lo_2sls,
+       headers=c("High Cap (CFA)","Low Cap (CFA)","High Cap (2SLS)","Low Cap (2SLS)"),
+       dict=DICT, se.below=TRUE, signif.code=SIG, fitstat=c("n","r2"))
+```
+
+```{r het-coefplot}
+#| fig-cap: "Coefficient on fragmentation index by capacity group and specification. Points are estimates; bars are 95% CIs. Clustered at country level."
+
+coef_df <- bind_rows(
+  tibble(spec="OLS",       group="Full",     est=coef(m_ols)["lag_frag"],
+         lo=confint(m_ols)["lag_frag",1],   hi=confint(m_ols)["lag_frag",2]),
+  tibble(spec="Country FE",group="Full",     est=coef(m_fe)["lag_frag"],
+         lo=confint(m_fe)["lag_frag",1],    hi=confint(m_fe)["lag_frag",2]),
+  tibble(spec="CFA",       group="Full",     est=coef(m_cfa)["lag_frag"],
+         lo=confint(m_cfa)["lag_frag",1],   hi=confint(m_cfa)["lag_frag",2]),
+  tibble(spec="CFA",       group="High Cap", est=coef(hi_cfa)["lag_frag"],
+         lo=confint(hi_cfa)["lag_frag",1],  hi=confint(hi_cfa)["lag_frag",2]),
+  tibble(spec="CFA",       group="Low Cap",  est=coef(lo_cfa)["lag_frag"],
+         lo=confint(lo_cfa)["lag_frag",1],  hi=confint(lo_cfa)["lag_frag",2])
+) |>
+  mutate(label=paste0(spec,"\n(",group,")"),
+         label=factor(label, levels=unique(label)))
+
+ggplot(coef_df, aes(x=label, y=est, colour=group)) +
+  geom_hline(yintercept=0, linetype="dashed", colour="grey50") +
+  geom_errorbar(aes(ymin=lo, ymax=hi), width=0.2, linewidth=0.8) +
+  geom_point(size=3) +
+  scale_colour_manual(values=c("Full"="#555","High Cap"="#1b9e77","Low Cap"="#d95f02")) +
+  labs(x=NULL, y="Coef. on Fragmentation Index", colour=NULL,
+       title="Effect of Fragmentation on NL Growth Across Specifications") +
+  theme_minimal(base_size=12) + theme(legend.position="bottom")
+```
+
+**The surprise:** the negative effect of fragmentation is **larger and more significant in high-governance regions** (−4.8\*\*, CFA) than in low-governance regions (−2.4, insignificant).
+
+The standard expectation from the aid coordination literature is the opposite: low-capacity governments should suffer most from donor fragmentation because they cannot coordinate across many principals. Two alternative interpretations fit the observed pattern:
+
+1. **Burden on functional bureaucracies.** High-capacity governments are the ones donors actually engage with. Multiple donors impose independent reporting, compliance, and reform conditionality demands on those governments. Fragmentation fragments *government attention*, not just donor resources. Low-capacity states are less engaged by donors to begin with, so fragmentation's marginal cost is lower.
+
+2. **Aid works in high-capacity regions; fragmentation disrupts it.** Aid may only be effective in high-capacity contexts (consistent with a large literature on absorptive capacity). Fragmentation then damages a process that was otherwise working. In low-capacity regions, aid effectiveness is low regardless of donor structure, so fragmentation does not add much additional harm.
+
+# Health Outcomes: Under-5 Mortality
+
+```{r u5m-table}
+#| tbl-cap: "Table 4: Effect of fragmentation on under-5 mortality (U5M). Country FE and CFA, full sample and capacity split."
+
+etable(u5_ols, u5_fe, u5_cfa, hi_u5, lo_u5,
+       headers=c("OLS","Country FE","CFA (Full)","High Cap","Low Cap"),
+       dict=DICT, se.below=TRUE, signif.code=SIG, fitstat=c("n","r2"))
+```
+
+Fragmentation has **no significant effect on U5 mortality** in any specification or subgroup. The coefficient is positive and tiny (≈0.002) across all columns, dwarfed by the standard error.
+
+This null is informative rather than uninformative:
+
+- Health outcomes may respond on longer time horizons than the 5-year windows capture.
+- U5M is more directly driven by health-specific inputs (nutrition, vaccination, water) than by the broad governance environment affected by fragmentation.
+- The sector analysis below shows that health-sector fragmentation specifically is also insignificant — it is not simply that the total-aid fragmentation measure is a poor proxy for health-relevant fragmentation.
+
+# Robustness
+
+## Estimator Comparison
+
+The main specification uses the **long-difference** estimator (one observation per unit, 2010→2015). Two alternatives:
+
+- **Panel FE:** all four 5-year transitions, unit + country-year FE.
+- **Stacked 2-window:** the 2010 and 2015 observations only (2005→2010 and 2010→2015 transitions), unit + country-year FE. This avoids noisier pre-2005 DMSP nightlights while still achieving within-unit identification.
+
+```{r estimator-table}
+#| tbl-cap: "Table 5: Estimator comparison. CFA specification. Long-difference identifies off country-level cross-section only (country FE). Stacked and panel FE identify within-unit variation (unit + country-year FE)."
+
+etable(m_cfa, stk_cfa, pfe_cfa,
+       headers=c("Long-Diff\n(country FE)","Stacked 2-window\n(unit+cy FE)",
+                 "Panel FE\n(unit+cy FE)"),
+       dict=DICT, se.below=TRUE, signif.code=SIG, fitstat=c("n","r2"))
+```
+
+The within-unit estimates (stacked and panel FE) both come in at −1.1, about one-third of the long-difference estimate. **This gap is not explained by data vintage** — the stacked estimator uses only clean post-2000 data and still attenuates. The explanation is that **within-unit variation in fragmentation is limited**. Regions' positions in the donor landscape change slowly; the long-diff estimate picks up the cross-sectional association between persistent fragmentation and persistent under-development, which the unit FE absorbs.
+
+The paper should present both: the long-difference as the cross-sectional conditional association (with country FE and initial conditions as controls), and the stacked/panel FE as the within-unit change estimate. Both are negative; neither achieves conventional significance in the within-unit design at this sample size.
+
+## Winsorization Sensitivity
+
+```{r wins-rob}
+#| fig-cap: "Sensitivity of the CFA coefficient on fragmentation to winsorization bounds applied to NL growth. Bars are 95% CIs."
+
+wins_specs <- list("1/99"=c(.01,.99),"5/95"=c(.05,.95),"10/90"=c(.10,.90))
+wins_mods <- lapply(wins_specs, function(b) {
+  d <- raw_a1 |> norm_nl() |>
+    build_vars("GID_1","total_aid_admin1","frag_index_admin1","ln_pop_admin1") |>
+    winsorise("nl_growth", b[1], b[2]) |> add_cap("mean_sgq_admin1") |>
+    to_ld("GID_1")
+  est_cfa(d, "nl_growth")
+})
+
+wins_df <- bind_rows(lapply(names(wins_specs), function(nm) {
+  m <- wins_mods[[nm]]
+  tibble(label=nm, est=coef(m)["lag_frag"],
+         lo=confint(m)["lag_frag",1], hi=confint(m)["lag_frag",2])
+})) |> mutate(label=factor(label, levels=names(wins_specs)))
+
+ggplot(wins_df, aes(x=label, y=est)) +
+  geom_hline(yintercept=0, linetype="dashed", colour="grey50") +
+  geom_errorbar(aes(ymin=lo, ymax=hi), width=0.2, linewidth=0.8, colour="#2166ac") +
+  geom_point(size=3, colour="#2166ac") +
+  labs(x="Winsorization bounds", y="CFA coef. on Frag. Index",
+       title="Robustness: Winsorization of NL Growth") +
+  theme_minimal(base_size=12)
+```
+
+The sign is negative and significant at all three winsorization levels. The magnitude shrinks from −4.9 (1/99) to −2.0 (10/90) as more extreme observations are trimmed. The 5/95 baseline is the midpoint. The monotone shrinkage with tighter bounds suggests extreme NL growth observations (raster artefacts at the tails) amplify the point estimate but do not drive the result.
+
+# Sector Analysis
+
+The sector-specific files decompose fragmentation and aid flows by broad sector (health, education, infrastructure, governance, humanitarian). We run country FE regressions within each sector. **No IV** — the shift-share instrument was built for total aid and is not a valid instrument for sector-specific flows. Interpret as descriptive: conditional on country and initial NL level, in which sectors does within-sector fragmentation predict slower growth?
+
+```{r sector-coefplot}
+#| fig-cap: "Figure 5: Effect of within-sector fragmentation on NL growth by sector and capacity group. Country FE, long-difference. Thick bars = 90% CI, thin bars = 95% CI. Descriptive (no IV)."
+#| fig-height: 5
+
+extract_coef <- function(m, sector, cap) {
+  if (is.null(m)) return(NULL)
+  b <- coef(m)["lag_frag"]; s <- se(m)["lag_frag"]
+  if (is.na(b)||is.na(s)) return(NULL)
+  tibble(sector=sector, capacity=cap, est=b,
+         lo95=b-1.96*s, hi95=b+1.96*s, lo90=b-1.645*s, hi90=b+1.645*s)
+}
+
+coef_sec <- bind_rows(lapply(names(sector_mods), function(s) {
+  bind_rows(
+    extract_coef(sector_mods[[s]]$full, sector_labels[[s]], "Full"),
+    extract_coef(sector_mods[[s]]$hi,   sector_labels[[s]], "High Cap"),
+    extract_coef(sector_mods[[s]]$lo,   sector_labels[[s]], "Low Cap")
+  )
+})) |>
+  mutate(sector=factor(sector, levels=rev(unname(sector_labels))),
+         capacity=factor(capacity, levels=c("Full","High Cap","Low Cap")))
+
+ggplot(coef_sec, aes(x=est, y=sector, colour=capacity, shape=capacity)) +
+  geom_vline(xintercept=0, linetype="dashed", colour="grey60") +
+  geom_linerange(aes(xmin=lo95, xmax=hi95), linewidth=0.6,
+                 position=position_dodge(0.6)) +
+  geom_linerange(aes(xmin=lo90, xmax=hi90), linewidth=1.4,
+                 position=position_dodge(0.6)) +
+  geom_point(size=2.5, position=position_dodge(0.6)) +
+  scale_colour_manual(values=c("Full"="#555","High Cap"="#1b9e77","Low Cap"="#d95f02")) +
+  scale_shape_manual(values=c("Full"=15,"High Cap"=16,"Low Cap"=17)) +
+  labs(x="Coef. on Within-Sector Frag. Index", y=NULL,
+       colour=NULL, shape=NULL,
+       caption="Country FE only. Clustered SE at country level.") +
+  theme_minimal(base_size=12) +
+  theme(legend.position="bottom", panel.grid.minor=element_blank())
+```
+
+```{r sector-table}
+#| tbl-cap: "Sector coefficients on fragmentation: NL growth, country FE, long-difference."
+
+sec_summ <- bind_rows(lapply(names(sector_mods), function(s) {
+  m <- sector_mods[[s]]$full
+  if (is.null(m)) return(NULL)
+  b <- coef(m)["lag_frag"]; se_val <- se(m)["lag_frag"]; n <- nobs(m)
+  p <- 2*pt(-abs(b/se_val), df=n-1)
+  stars <- ifelse(p<.01,"***", ifelse(p<.05,"**", ifelse(p<.10,"*","")))
+  tibble(Sector=sector_labels[[s]],
+         Coef=round(b,3), SE=round(se_val,3),
+         Sig=stars, N=n)
+}))
+
+sec_summ |> gt() |>
+  cols_label(Coef="Coef.", Sig="") |>
+  tab_header(title="Sector-Specific Fragmentation Effects (NL Growth)") |>
+  tab_style(style=cell_text(weight="bold"), locations=cells_column_labels()) |>
+  tab_footnote("Country FE, long-difference. No IV. * p<0.10 ** p<0.05 *** p<0.01") |>
+  opt_stylize(style=1)
+```
+
+**Key findings by sector:**
+
+- **Governance support (−2.12\*\*\*)** is the most precisely estimated and most plausible mechanism. Multiple donors simultaneously providing conflicting governance advice and reform conditionality is the textbook coordination-failure story (Knack & Rahman 2007). Governments pulled in different institutional directions by fragmented donors cannot implement any single reform coherently.
+
+- **Education (−1.54\*\*)** is significant and consistent across capacity groups. Education projects may require sustained, multi-year engagement to build human capital; fragmented donors with shorter project cycles and different pedagogical approaches may disrupt this.
+
+- **Humanitarian (−5.27\*\*\*)** is largest in magnitude but should be treated carefully. Humanitarian aid is reactive to crises, so high fragmentation may proxy for crisis severity rather than donor coordination failure. The sample is also the smallest (N≈221).
+
+- **Health (−1.27) and infrastructure (−0.84)** are imprecise and insignificant. Health may operate through different pathways (targeted interventions) less sensitive to coordination. Infrastructure's null is less expected but may reflect that physical project output (a road) is less disrupted by donor proliferation than institutional outputs (a policy reform).
+
+# Summary
+
+```{r summary-table}
+#| tbl-cap: "Summary: CFA coefficient on fragmentation index across all main specifications."
+
+summ <- bind_rows(
+  tibble(Specification="Main — OLS",               Sample="Full",
+         Coef=round(coef(m_ols)["lag_frag"],3),    SE=round(se(m_ols)["lag_frag"],3),
+         N=nobs(m_ols)),
+  tibble(Specification="Main — Country FE",         Sample="Full",
+         Coef=round(coef(m_fe)["lag_frag"],3),     SE=round(se(m_fe)["lag_frag"],3),
+         N=nobs(m_fe)),
+  tibble(Specification="Main — CFA",                Sample="Full",
+         Coef=round(coef(m_cfa)["lag_frag"],3),    SE=round(se(m_cfa)["lag_frag"],3),
+         N=nobs(m_cfa)),
+  tibble(Specification="Main — CFA",                Sample="High Cap",
+         Coef=round(coef(hi_cfa)["lag_frag"],3),   SE=round(se(hi_cfa)["lag_frag"],3),
+         N=nobs(hi_cfa)),
+  tibble(Specification="Main — CFA",                Sample="Low Cap",
+         Coef=round(coef(lo_cfa)["lag_frag"],3),   SE=round(se(lo_cfa)["lag_frag"],3),
+         N=nobs(lo_cfa)),
+  tibble(Specification="Stacked 2-window — CFA",    Sample="Full",
+         Coef=round(coef(stk_cfa)["lag_frag"],3),  SE=round(se(stk_cfa)["lag_frag"],3),
+         N=nobs(stk_cfa)),
+  tibble(Specification="Panel FE — CFA",            Sample="Full",
+         Coef=round(coef(pfe_cfa)["lag_frag"],3),  SE=round(se(pfe_cfa)["lag_frag"],3),
+         N=nobs(pfe_cfa))
+) |>
+  mutate(Stars = case_when(
+    2*pt(-abs(Coef/SE), df=N-1) < .01 ~ "***",
+    2*pt(-abs(Coef/SE), df=N-1) < .05 ~ "**",
+    2*pt(-abs(Coef/SE), df=N-1) < .10 ~ "*",
+    TRUE ~ ""))
+
+summ |> gt() |>
+  cols_label(SE="(SE)", Stars="") |>
+  tab_header(title="Summary of Main Results",
+             subtitle="Dependent variable: NL growth (% / yr)") |>
+  tab_style(style=cell_text(weight="bold"), locations=cells_column_labels()) |>
+  tab_style(style=cell_fill(color="#f0f7f0"),
+            locations=cells_body(rows=Specification=="Main — CFA" & Sample=="Full")) |>
+  tab_footnote("Highlighted row = headline specification. SE clustered at country level.") |>
+  opt_stylize(style=1)
+```
+
+**The main finding:** donor fragmentation is associated with lower nightlights growth, with the effect concentrated in high-governance-capacity regions. The cross-sectional estimate (long-difference, country FE) is −3.1\* to −3.5\*\*; the within-unit estimate (stacked/panel FE) is −1.1, statistically indistinguishable from zero at conventional levels but consistently negative. Health outcomes (U5M) show no effect. Sector analysis points to governance support and education aid as the primary channels.
+
+**What remains open:**
+
+1. The within-unit identification (stacked FE) lacks power with N≈530 units across 33 clusters. Admin2 replication with ~2400 units would help.
+2. The capacity heterogeneity — fragmentation hurting high-capacity regions more than low-capacity ones — is the most important puzzle and deserves a dedicated mechanism test.
+3. The sector results are descriptive (no IV); a sector-specific shift-share would be needed for causal sector inference.
