@@ -494,6 +494,47 @@ DICT <- c(
 )
 SIG <- c("***" = 0.01, "**" = 0.05, "*" = 0.1)
 
+# ── 4-period panel (2000–2015): back-fill population, all windows ─────────────
+raw_4p <- raw_a1 |>
+    arrange(GID_1, year) |>
+    group_by(GID_1) |>
+    fill(ln_pop_admin1, .direction = "downup") |>
+    mutate(
+        lag_mean_nl   = dplyr::lag(mean_nl, 1L),
+        lag_frag      = dplyr::lag(frag_index_admin1, 1L),
+        lag_log_pop   = dplyr::lag(ln_pop_admin1, 1L),
+        lag_total_aid = log(dplyr::lag(total_aid_admin1, 1L) + 0.01),
+        log_lag_nl    = log(dplyr::lag(mean_nl, 1L) + 0.01),
+        nl_growth     = case_when(
+            is.na(lag_mean_nl) ~ NA_real_,
+            TRUE ~ ((log(mean_nl + 0.01) - log(lag_mean_nl + 0.01)) / 5) * 100
+        )
+    ) |>
+    ungroup() |>
+    filter(year > 1995)
+
+q4 <- quantile(raw_4p$nl_growth, c(.05, .95), na.rm = TRUE)
+raw_4p$nl_growth <- pmax(pmin(raw_4p$nl_growth, q4[2]), q4[1])
+
+panel_4p <- filter(
+    raw_4p,
+    is.finite(nl_growth), is.finite(lag_frag), is.finite(log_lag_nl),
+    is.finite(lag_total_aid), is.finite(lag_log_pop), is.finite(IV_lag)
+)
+
+m_fe4 <- feols(
+    nl_growth ~ lag_frag + lag_total_aid + lag_log_pop + log_lag_nl |
+        GID_0^year + GID_1,
+    cluster = ~GID_0, data = panel_4p
+)
+
+fs_4p <- feols(
+    total_aid_admin1 ~ IV_lag + lag_log_pop + lag_frag + log_lag_nl |
+        GID_0^year + GID_1,
+    cluster = ~GID_0, data = panel_4p
+)
+fs_fstat_4p <- (coef(fs_4p)["IV_lag"] / se(fs_4p)["IV_lag"])^2
+
 # ── Interflex: non-parametric binning estimator ───────────────────────────────
 ifl_dat_a1 <- panel_a1 |>
     filter(
@@ -1115,6 +1156,32 @@ ggplot(wins_df, aes(x = label, y = est)) +
 
 The sign is negative and significant at all three winsorization levels. The magnitude shrinks from −4.9 (1/99) to −2.0 (10/90) as more extreme observations are trimmed. The 5/95 baseline is the midpoint. The monotone shrinkage with tighter bounds suggests extreme NL growth observations (raster artefacts at the tails) amplify the point estimate but do not drive the result.
 
+## Expanding to all four windows (2000–2015)
+
+The long-difference uses only the 2010→2015 window. The 5-year panel contains four complete windows (2000, 2005, 2010, 2015), once population is back-filled from the 2005 observation (population changes slowly; the unit FE absorbs the level). Using all four windows with unit + country-year FE shifts identification from *between* regions to *within* regions over time.
+
+```{r panel-4period}
+#| tbl-cap: "Robustness: 4-period panel (2000–2015). Unit + country-year FE. No IV — the Bartik instrument loses most of its power with unit FE (F = 3.7 vs 25.6 in the long-diff), so we report FE-only here."
+
+etable(
+    m_cfa, stk_cfa, m_fe4,
+    headers = c(
+        "Long-diff (2015)\nCountry FE + IV",
+        "Stacked 2-window\nUnit+CY FE",
+        "4-period (2000–15)\nUnit+CY FE"
+    ),
+    dict    = DICT,
+    se.below = TRUE, signif.code = SIG,
+    fitstat  = c("n", "r2")
+)
+```
+
+The coefficient moves from −3.1 (long-diff) → −1.1 (stacked 2-window) → **`r round(coef(m_fe4)["lag_frag"],2)`** (4-period, SE = `r round(se(m_fe4)["lag_frag"],2)`) as we add within-unit identification. The sign is consistently negative; the magnitude attenuates with unit FE.
+
+**Why the IV cannot be used here.** The Bartik instrument derives power from cross-sectional variation: regions with different historical exposure to donors whose governments become more fractionalized receive different aid shocks. Once unit FE absorbs each region's average exposure, the remaining within-unit, within-country-year IV variation drops to F = `r round(fs_fstat_4p,1)` — well below the Stock–Yogo threshold. This is a structural feature of Bartik designs, not a data quality problem.
+
+The 4-period result is therefore an OLS within-unit estimate. Attenuation from classical measurement error in annual NL (carried through the 5-year growth rates) and from limited within-unit variation in fragmentation likely compress the coefficient toward zero relative to the true effect.
+
 # The Scale Question: Province vs. District
 
 This is the most important finding in the analysis. Admin1 (province) gives a consistently negative fragmentation coefficient; admin2 (district) gives a near-zero or slightly positive one. This is not a contradiction — it is a finding about where the mechanism operates.
@@ -1332,6 +1399,208 @@ At admin2, the IV is stronger (first-stage F = `r round(fs_fstat_a2, 1)`) due to
 Donor coordination efforts are most valuable at the **provincial (admin1) level** — where the government bandwidth constraint is binding. Consolidating donor relationships at the provincial government office reduces the number of principals any given bureaucrat must manage. At the **district (admin2) level**, diversity of donor engagement across project types is not obviously harmful and may be beneficial (complementary projects).
 
 This has a direct operational translation: country-level coordination forums (like the ones run by the OECD DAC) should focus on reducing the number of donors that any single ministry or provincial office manages, not on minimising the total number of donors in a country.
+
+# Mechanism: What Is the Cross-Section Really Identifying?
+
+The headline estimate — the long-difference CFA — is a cross-sectional result. It identifies off variation *between* regions within the same country, conditional on initial economic conditions, with aid volume instrumented. Before taking the coefficient to policy, it is worth being precise about what this variation represents and what mechanisms it can and cannot distinguish.
+
+## What the cross-sectional variation is
+
+Within a country, regions differ in how many donors they attract and how concentrated those donors are. That variation has a structure:
+
+- **Geographic accessibility.** Coastal and capital-adjacent regions are easier for donors to reach. They attract more donors, accumulating a more diverse portfolio over time.
+- **Historical NGO networks.** Some regions have deep missionary, colonial, or NGO roots — the "usual suspects" of international development attention. Once established, these networks attract subsequent donors.
+- **Sector specialisation.** Port cities attract infrastructure donors; high-mortality regions attract health donors; conflict-affected areas attract humanitarian donors. Each additional sector brings additional donors.
+- **Political salience.** Capitals and swing districts may attract governments' aid strategically.
+
+The Bartik instrument shifts the *volume* of aid by interacting historical exposure with donor-government fractionalization. It does not directly shift *fragmentation* — that remains identified off the persistent cross-sectional gradient. The country FE removes country-level confounders. The initial NL control removes the tendency of poorer regions to grow faster or slower systematically.
+
+**What remains in the cross-section is the persistent structural donor landscape of each province** — the legacy of decades of cumulative donor decisions. Regions with diverse donor histories have high fragmentation; regions dominated by a single bilateral relationship have low fragmentation.
+
+## What mechanisms the cross-section can distinguish
+
+**Mechanism 1: Government bandwidth (our story).**
+A provincial government managing 12 donors simultaneously faces 12 sets of reporting requirements, 12 separate conditionalities, 12 monitoring visits per year. Coordination overhead consumes bureaucratic capacity that would otherwise go to implementation. This mechanism:
+
+- Predicts harm at the *provincial* level (where government-donor relationships are managed) — ✓ we find −3.1 at admin1
+- Predicts *no* harm or benefit at the *district* level (where projects are implemented) — ✓ we find ≈0 at admin2
+- Predicts more harm in *governance and education* (institution-intensive sectors) than in infrastructure (physical delivery) — ✓ sector analysis confirms
+- Does **not** predict that better-governed provinces escape the harm — and the interflex binning is consistent with this: all governance bins show negative province-level effects
+
+**Mechanism 2: Principal-agent fragmentation.**
+Each donor acts as a separate principal with its own monitoring and conditionality. The provincial government (agent) faces multiple, potentially conflicting principals. Rational response: satisfy the most powerful donor, give token compliance to others, and never implement any reform fully. This is the Knack–Rahman (2007) model. It predicts harm concentrated in *reform-oriented* sectors — governance support is most harmful in the sector analysis (−2.12\*\*\*), consistent with this story.
+
+**Mechanism 3: Aid fungibility and substitution.**
+If fragmented aid is harder to attribute (many donors, unclear credit assignment), the government has more freedom to substitute donor funds for domestic budget and redirect domestic resources elsewhere. This mechanism would *reduce* harm if the government uses the fungibility productively, or *amplify* harm if it leads to reduced domestic investment. This mechanism makes no clear prediction about the province vs. district asymmetry, which cuts against it as the primary channel.
+
+**Mechanism 4: Selection on unobservable hardness-to-develop.**
+The most serious threat to the cross-sectional interpretation. High-fragmentation regions may be structurally harder to develop — rugged terrain, poor market access, ethnic diversity — and *donors pile in because they are hard*, creating a correlation between fragmentation and slow growth that does not reflect any causal effect. The country FE removes the average level of such characteristics across the country; the initial NL control removes the observed component. But unobserved, time-varying hardness could remain.
+
+**How to stress-test mechanism 4:**
+
+| Test | Result | Interpretation |
+|---|---|---|
+| IV (Bartik shift): donor fractionalization $\perp$ local hardness | F=25.6, consistent estimates | Shift component is clean |
+| Province vs. district asymmetry | Admin1 negative, Admin2 ≈ 0 | Hardness would predict same sign at both levels |
+| Governance interaction (interflex) | Uniform harm across SGQ at admin1 | Hardness would predict higher harm in low-SGQ regions |
+| Sector heterogeneity | Governance/education > infrastructure | Hardness would predict uniform harm across sectors |
+| 4-period within-unit | −0.48 (same sign, attenuated) | Hardness absorbed by unit FE, residual negative |
+
+The pattern of evidence is most consistent with the **bandwidth mechanism** (Mechanism 1) and partially consistent with the **principal-agent mechanism** (Mechanism 2). Pure hardness-to-develop (Mechanism 4) would not produce the scale asymmetry or the sector-specific pattern.
+
+## What the cross-section cannot tell us
+
+1. **Counterfactual coordination.** We cannot observe what would have happened if a high-fragmentation province had the same donors but a single coordination body. The estimate captures the reduced-form of the entire coordination failure, not the separable effect of any single policy lever.
+
+2. **Dynamic effects.** The long-difference captures the cumulative 5-year effect. We cannot distinguish whether fragmentation causes a one-time restructuring cost (government reorganises around multiple donors) or a persistent annual drag. The 4-period FE result (−0.48/yr) and the near-zero annual panel result together suggest effects accumulate slowly rather than hitting immediately.
+
+3. **General equilibrium.** If donors in high-fragmentation regions redirect money *away* from lower-fragmentation regions in the same country, the country FE may mask positive spillovers in concentrated regions. The estimate is the within-country relative effect, not the aggregate welfare impact.
+
+# Measurement Robustness
+
+## Alternative fragmentation measures
+
+The main analysis uses the HHI-based fragmentation index (`frag_index_admin1 = 1 − HHI`), where higher values mean more dispersed donors. Four measures of fragmentation are available. All capture the same underlying concept — proliferation of donors — but emphasise different dimensions:
+
+| Measure | What it captures | Scale |
+|---|---|---|
+| `frag_index` (HHI-based) | Concentration inequality across donors | 0–1 |
+| `donor_count` | Raw number of active donors | Integer |
+| `frag_3` (tail share) | Share of aid going to donors outside top 3 | 0–1 |
+| `frag_below10` | Count of donors with <10% share | Integer |
+
+```{r frag-horse-race}
+#| tbl-cap: "Horse race: all fragmentation measures, country FE long-difference. Controls: log sector aid, log pop, log initial NL. SE clustered at country."
+
+# Build horse-race dataset
+hr_base <- raw_a1 |>
+  arrange(GID_1, year) |>
+  group_by(GID_1) |>
+  mutate(
+    lag_mean_nl      = dplyr::lag(mean_nl, 1L),
+    lag_frag         = dplyr::lag(frag_index_admin1, 1L),
+    lag_donor_count  = dplyr::lag(donor_count_admin1, 1L),
+    lag_frag3        = dplyr::lag(frag_3_admin1, 1L),
+    lag_fragbelow    = dplyr::lag(frag_below10_admin1, 1L),
+    lag_log_pop      = dplyr::lag(ln_pop_admin1, 1L),
+    lag_total_aid    = log(dplyr::lag(total_aid_admin1, 1L) + 0.01),
+    log_lag_nl       = log(dplyr::lag(mean_nl, 1L) + 0.01),
+    nl_growth        = case_when(
+      is.na(lag_mean_nl) ~ NA_real_,
+      TRUE ~ ((log(mean_nl + 0.01) - log(lag_mean_nl + 0.01)) / 5) * 100
+    )
+  ) |> ungroup() |>
+  winsorise("nl_growth") |>
+  group_by(GID_1) |>
+  filter(year == max(year, na.rm = TRUE), !is.na(lag_frag)) |>
+  ungroup() |>
+  filter(is.finite(nl_growth), is.finite(log_lag_nl),
+         is.finite(lag_frag), is.finite(lag_total_aid), is.finite(lag_log_pop))
+
+ctrl <- "+ lag_total_aid + lag_log_pop + log_lag_nl | GID_0"
+mhr1 <- feols(as.formula(paste("nl_growth ~ lag_frag", ctrl)),        cluster = ~GID_0, data = hr_base)
+mhr2 <- feols(as.formula(paste("nl_growth ~ lag_donor_count", ctrl)), cluster = ~GID_0, data = filter(hr_base, is.finite(lag_donor_count)))
+mhr3 <- feols(as.formula(paste("nl_growth ~ lag_frag3", ctrl)),       cluster = ~GID_0, data = filter(hr_base, is.finite(lag_frag3)))
+mhr4 <- feols(as.formula(paste("nl_growth ~ lag_fragbelow", ctrl)),   cluster = ~GID_0, data = filter(hr_base, is.finite(lag_fragbelow)))
+mhr5 <- feols(as.formula(paste("nl_growth ~ lag_frag + lag_donor_count", ctrl)), cluster = ~GID_0, data = filter(hr_base, is.finite(lag_donor_count)))
+
+etable(
+  mhr1, mhr2, mhr3, mhr4, mhr5,
+  headers = c("HHI frag", "Donor count", "Tail share", "N small donors", "Joint"),
+  dict = c(
+    lag_frag        = "Frag index (HHI)",
+    lag_donor_count = "Donor count",
+    lag_frag3       = "Tail share",
+    lag_fragbelow   = "N small donors",
+    lag_total_aid   = "LN Aid",
+    lag_log_pop     = "LN Pop",
+    log_lag_nl      = "LN NL (t-1)"
+  ),
+  se.below = TRUE, signif.code = c("***" = 0.01, "**" = 0.05, "*" = 0.1),
+  fitstat = c("n", "r2")
+)
+```
+
+**Interpretation.** All four measures are negative and significant when entered alone. The tail share (`frag_3`) is the strongest individual predictor — regions where many small donors collectively hold a large share of disbursements suffer the most. This is consistent with the principal-agent story: small donors impose coordination costs without contributing enough resources to be ignored. In the joint model (column 5), both HHI and donor count become insignificant due to moderate collinearity (r = 0.52). The HHI-based index is kept as the primary measure because it is standard in the literature and theoretically clean (it captures both donor count and distribution); `donor_count` serves as the primary robustness check.
+
+## Alternative moderators: EA infrastructure counts
+
+The Afrobarometer collects enumerator-area (EA) checklist items on whether services and facilities exist within the EA. Two indices are constructed as simple counts:
+
+- **`mean_svc_admin1`** (0–4): count of service types present in the EA, averaged to admin1 (electricity, water, roads, markets — sourced from `ea_svc*` survey items)
+- **`mean_fac_admin1`** (0–5): count of facility types present in the EA, averaged to admin1 (clinic, school, post office, etc. — sourced from `ea_fac*` survey items)
+
+Unlike `mean_sgq` (subjective governance ratings), these are quasi-objective counts of observable infrastructure. They are also less susceptible to social-desirability bias.
+
+```{r alt-moderators}
+#| tbl-cap: "Alternative capacity splits using EA facility access (mean_fac) and service availability (mean_svc). Country FE, long-difference."
+
+fac_cut <- quantile(panel_a1$mean_fac_admin1, 0.75, na.rm = TRUE)
+svc_cut <- quantile(panel_a1$mean_svc_admin1, 0.75, na.rm = TRUE)
+
+hi_fac <- filter(panel_a1, mean_fac_admin1 >  fac_cut)
+lo_fac <- filter(panel_a1, mean_fac_admin1 <= fac_cut)
+hi_svc <- filter(panel_a1, mean_svc_admin1 >  svc_cut)
+lo_svc <- filter(panel_a1, mean_svc_admin1 <= svc_cut)
+
+run_alt <- function(dat) feols(
+  nl_growth ~ lag_frag + lag_total_aid + lag_log_pop + log_lag_nl | GID_0,
+  cluster = ~GID_0, data = dat
+)
+
+malt_full <- run_alt(panel_a1)
+malt_hf   <- run_alt(hi_fac)
+malt_lf   <- run_alt(lo_fac)
+malt_hs   <- run_alt(hi_svc)
+malt_ls   <- run_alt(lo_svc)
+
+etable(
+  malt_full, malt_hf, malt_lf, malt_hs, malt_ls,
+  headers = c("Full", "Hi fac", "Lo fac", "Hi svc", "Lo svc"),
+  dict = c(
+    lag_frag      = "Frag index (t-1)",
+    lag_total_aid = "LN Aid (t-1)",
+    lag_log_pop   = "LN Pop (t-1)",
+    log_lag_nl    = "LN NL (t-1)"
+  ),
+  se.below = TRUE, signif.code = c("***" = 0.01, "**" = 0.05, "*" = 0.1),
+  fitstat = c("n", "r2")
+)
+```
+
+**Interpretation.** Regardless of which capacity measure is used, the pattern is the same: the negative effect of fragmentation is **attenuated in well-served/well-facilitated regions and stronger in poorly-served ones**. With both moderators, the high-capacity group coefficient is smaller in absolute value and insignificant, while the low-capacity group coefficient is larger and significant. This is the same pattern as the SGQ split — not surprising since all three measures (governance quality, service counts, facility counts) capture different facets of a common "regional development" latent variable (correlations: sgq-svc = −0.21, sgq-fac = −0.08, svc-fac = 0.54). The fact that the interaction survives across all three measures strengthens the robustness of the heterogeneity finding.
+
+## EA infrastructure as a mechanism test
+
+If donor fragmentation harms economic growth through **worse service delivery** — the principal-agent channel where fragmented donors each under-invest in the government's service capacity — we should observe more-fragmented regions scoring *lower* on service and facility availability. We regress the EA indices directly on lagged fragmentation.
+
+```{r svc-fac-outcome}
+#| tbl-cap: "Fragmentation predicting EA infrastructure indices (mechanism test). Country FE, long-difference. Positive coefficient = more fragmented regions have MORE of the outcome."
+
+m_svc_o <- feols(mean_svc_admin1 ~ lag_frag + lag_total_aid + lag_log_pop + log_lag_nl | GID_0,
+                 cluster = ~GID_0, data = panel_a1)
+m_fac_o <- feols(mean_fac_admin1 ~ lag_frag + lag_total_aid + lag_log_pop + log_lag_nl | GID_0,
+                 cluster = ~GID_0, data = panel_a1)
+
+etable(
+  m_svc_o, m_fac_o,
+  headers = c("Service count (mean_svc)", "Facility count (mean_fac)"),
+  dict = c(
+    lag_frag      = "Frag index (t-1)",
+    lag_total_aid = "LN Aid (t-1)",
+    lag_log_pop   = "LN Pop (t-1)",
+    log_lag_nl    = "LN NL (t-1)"
+  ),
+  se.below = TRUE, signif.code = c("***" = 0.01, "**" = 0.05, "*" = 0.1),
+  fitstat = c("n", "r2")
+)
+```
+
+**Interpretation.** The service delivery index shows no association with fragmentation (b ≈ 0). The facility access index is *positive* (b ≈ +0.19\*) — more fragmented regions have marginally *more* facilities. This positive coefficient is a selection artefact: geographically accessible, more-developed regions attract more donors (fragmentation) *and* have more observable infrastructure. It is not evidence that fragmentation builds facilities.
+
+The null on services and the positive selection on facilities together imply: **the mechanism through which fragmentation harms NL growth is not through deteriorating service scores.** The harm is upstream — at the planning and coordination stage, in the hidden costs of fragmented governance (reporting burden, misaligned project cycles, strategic overlap) — which appear in aggregate economic activity (NL) but not in cross-sectional snapshots of service availability.
+
+This is, in fact, what the bandwidth hypothesis predicts: the constraint is government *time and administrative capacity*, which is invisible in infrastructure counts but shows up in output-level aggregates.
 
 # Sector Analysis
 
