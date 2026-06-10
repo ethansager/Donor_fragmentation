@@ -393,16 +393,31 @@ kbl(out, booktabs = TRUE, escape = FALSE, row.names = FALSE, linesep = "",
   pack_rows("Relationship with the state", 1, 4)
 ```
 
+## The legitimacy cost is universal
+
+A striking feature of the legitimacy result is how *robust* it is to the contexts that shape the
+economic effect. Whereas fragmentation's drag on the World Bank's nightlights return depends on state
+capacity, its erosion of trust does not. We probe three potential moderators and find essentially
+none. **Capacity:** the trust effect is unmoved by an external state-reach proxy (distance to the
+economic core) and by pre-colonial political centralization (Murdock's jurisdictional hierarchy) —
+two independent measures, both null. **Sector:** in a horse race that enters fragmentation in each
+aid sector simultaneously, trust erosion appears across the board; tellingly, fragmentation in
+*government-channeled* aid (governance/budget support) is the single strongest predictor — not the
+placebo a narrow "bypass of service delivery" account would require. The legitimacy cost is thus a
+general property of donor proliferation, not a feature of weak states or particular sectors:
+*wherever, and in whatever form, many uncoordinated donors operate, citizens trust their local
+government less.*
+
 ## Substitution where the state is absent
 
-The two halves meet in the cross-section of capacity. Moderating the service-delivery result by the
-(here non-circular) capacity index shows that fragmentation's service boost is *largest where
-capacity is lowest*: the fragmentation-by-capacity interaction on the service count is negative and
-significant. Where the state is absent, fragmented donors substitute for it, building visible
-infrastructure; where the state already delivers, additional donors add less. Read together with the
-nightlights result — where capacity *buffers* the growth penalty — the picture is one of weak-state
-districts receiving more tangible services from fragmented donors while paying for it in
-coordination chaos (lower growth) and bypassed legitimacy (lower trust).
+The material side, by contrast, does interact with capacity, and in the opposite direction from
+nightlights. Moderating the service-delivery result by the (here non-circular) capacity index, the
+service boost is *largest where capacity is lowest*: the fragmentation-by-capacity interaction on the
+service count is negative and significant. Where the state is absent, fragmented donors substitute
+for it, building visible infrastructure; where it already delivers, additional donors add less. The
+composite picture: weak-capacity districts receive more tangible services from fragmented donors
+while paying for it in coordination chaos (lower growth from the World Bank's projects) and bypassed
+legitimacy (lower trust) — and the legitimacy bill comes due everywhere.
 
 # Robustness
 
@@ -415,12 +430,25 @@ high-capacity indicator, the differential leads are jointly insignificant ($p = 
 the five are individually significant. The moderation is thus better supported than the level
 effect, but not pristine.
 
-**Spatial scale.** The fragmentation-by-capacity interaction is large and precise at the
-$0.1^\circ$ resolution but attenuates to insignificance when cells are aggregated to $0.25^\circ$.
-Part of this is mechanical — coarsening averages treated and untreated sub-cells together and
-dilutes every treatment effect — but we cannot rule out genuine scale sensitivity, and a clean
-de-trending test at native resolution (cell-specific linear trends) exceeded available memory. This
-is an open robustness item.
+**Unit of analysis and "buying power" from the grid.** A natural worry is that the cell-level
+interaction is an artifact of large $N$: fragmentation and capacity vary at the *district* level, so
+millions of cells add no independent information about the moderator. We address this directly by
+re-estimating the moderation at the **district** level (collapsing cells to district-years; $N =
+3{,}826$ districts with a genuine never-treated control group of $1{,}627$; district and
+country-by-year fixed effects, clustered by country). The triple interaction is **larger and equally
+significant** ($+0.81$, $p = 0.0002$). The grid cell is the appropriate scale for a *localized* point
+treatment, but the moderation does not depend on it. This also explains an apparent attenuation when
+cells are pooled into arbitrary $0.25^\circ$ squares: those bins crosscut district boundaries and
+average together districts with different fragmentation and capacity, garbling the moderator; aggregating
+*within* districts confirms the result.
+
+**Capacity measure.** The moderation holds for the contemporary survey-based governance measure at
+both the cell and district level but is null for an external pre-colonial centralization proxy
+(Murdock's jurisdictional-hierarchy index). We read this as theory-consistent rather than
+disqualifying: H1 concerns *present-day* coordination capacity, which the contemporary measure
+captures directly, whereas pre-colonial centralization is a deep-historical and coarse proxy whose
+link to current administrative capacity is weak — so a null from it is weak evidence against the
+effect. We report both.
 
 **Supportive checks.** Restricting comparisons to never-treated cells leaves the moderation
 essentially unchanged. Results use the continuous Regan nightlights series; the raw harmonized
