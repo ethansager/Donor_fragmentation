@@ -4,6 +4,14 @@ subtitle: "Donor fragmentation, aid effectiveness, and the local state — worki
 author: "Sager & Tobin"
 date: today
 format:
+  beamer:
+    slide-level: 2
+    aspectratio: 169
+    theme: Madrid
+    pdf-engine: xelatex
+    mainfont: "DejaVu Sans"
+    sansfont: "DejaVu Sans"
+    monofont: "DejaVu Sans Mono"
   pptx:
     slide-level: 2
 execute:
@@ -35,20 +43,20 @@ execute:
 
 ## Result 1 — World Bank aid raises local activity
 
-![](../03_output/figs/fig1_wb_event_study.png)
+![](../03_output/figs/fig1_wb_event_study.png){width=72% fig-align="center"}
 
 - Cumulating to ~**+19%** luminosity by year 10. *Caveat:* pooled pre-trends not perfectly flat → level effect **suggestive**.
 
 ## Result 2 — Competition or Chaos: it depends on capacity
 
-![](../03_output/figs/fig2_frag_x_capacity_nightlights.png)
+![](../03_output/figs/fig2_frag_x_capacity_nightlights.png){width=72% fig-align="center"}
 
 - `WB × fragmentation × capacity` is **positive and precise**.
 - **Robust to the "is this just grid-cell power?" worry:** re-estimated at the **district** level (honest N = 3,826; real controls) → **+0.81, p = 0.0002**.
 
 ## Result 3 — More services, *less* trust
 
-![](../03_output/figs/fig3_afro_material_vs_relational.png)
+![](../03_output/figs/fig3_afro_material_vs_relational.png){width=68% fig-align="center"}
 
 - Fragmentation → **more** services/facilities (counts) but **less** trust, responsiveness, contact with **local** government.
 - The accountability cost nightlights cannot see.

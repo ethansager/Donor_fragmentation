@@ -7,12 +7,12 @@
 #       module avail 2>&1 | grep -i '\bR\b\|^R/'           # R module    -> module load line
 # Then:  mkdir -p logs && sbatch 02_scripts/02_analysis/hpc/run_robustness.slurm
 #SBATCH --job-name=frag_robust
-#SBATCH --partition=<PARTITION>        # <-- e.g. high-mem / standard / shared
-#SBATCH --account=<ACCOUNT>            # <-- your PI / allocation account (omit if not required)
+#SBATCH --partition=base1
+#SBATCH --account=az332
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=16             # data.table + fixest multithread
-#SBATCH --mem=128G                     # the binding constraint (raise to 256G if it OOMs)
+#SBATCH --mem=256G                     # the binding constraint (raise to 256G if it OOMs)
 #SBATCH --time=08:00:00
 #SBATCH --output=logs/frag_robust_%j.out
 #SBATCH --error=logs/frag_robust_%j.err
@@ -21,7 +21,7 @@ set -euo pipefail
 mkdir -p logs
 
 # --- R via environment modules ---
-module load r                          # <-- set exact version from `module avail` (e.g. R/4.3.1)
+module load R/4.3.3
 
 # personal package library (module R is usually read-only); the R script installs here on first run
 export R_LIBS_USER="$HOME/R/frag-lib"
