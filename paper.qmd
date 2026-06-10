@@ -13,6 +13,7 @@ date: today
 format:
   pdf:
     documentclass: article
+    pdf-engine: xelatex
     papersize: letter
     fontsize: 11pt
     linestretch: 2
@@ -35,7 +36,6 @@ format:
         \captionsetup[figure]{skip=6pt, font=small}
         \floatplacement{table}{H}
         \floatplacement{figure}{H}
-        % Running headers (plain style for title/abstract page)
         \pagestyle{fancy}
         \fancyhf{}
         \fancyhead[L]{\small\itshape Competition or Chaos?}
@@ -47,17 +47,30 @@ format:
           \fancyfoot[C]{\small\thepage}%
           \renewcommand{\headrulewidth}{0pt}%
         }
-        % Tighter section title spacing
         \usepackage{titlesec}
         \titlespacing*{\section}{0pt}{1.5ex plus .5ex minus .2ex}{0.8ex plus .1ex}
         \titlespacing*{\subsection}{0pt}{1.2ex plus .4ex minus .2ex}{0.5ex plus .1ex}
 abstract: |
-  National policies and institutional quality have long been recognized as key determinants of aid effectiveness. At the national level, capable governments are better able to harness donor competition, whereas weaker ones often fail to do so. Yet at the subnational level, the relationship between aid fragmentation and development outcomes depends not only on national institutions but also on local ones. Subnational governments with stronger administrative capacity can coordinate donor activities and align aid with local priorities, while weaker jurisdictions are more prone to inefficiency and duplication. To test this argument, we combine geocoded aid data from GODAD with public perception data from Afrobarometer across Sub-Saharan Africa from 1995 to 2015. Using a shift-share instrumental variable strategy, we find that higher donor fragmentation consistently predicts lower nightlights growth — a proxy for local economic activity. The negative effect is attenuated in regions with stronger subnational governance capacity, consistent with the hypothesis that capable local governments are better positioned to manage the coordination costs of fragmented aid. Our findings underscore that the effectiveness of aid depends critically on subnational institutional strength.
+  Does donor fragmentation help or harm local development? We study this question through a
+  spatially precise lens: the World Bank is the only donor in Sub-Saharan Africa geocoded to exact
+  project sites, so we use the staggered arrival of World Bank projects as a treatment and measure
+  whether its local impact depends on how many *other* donors crowd the surrounding district. Using
+  a continuous, sensor-harmonized nightlights series over 2000–2020, an event-study design shows
+  that World Bank projects are followed by rising local economic activity. Crucially, this return is
+  undermined by donor fragmentation only where subnational state capacity is weak: the
+  fragmentation-by-capacity interaction is large and precise — and, unlike the level effect, is not
+  contaminated by differential pre-trends across capacity groups — implying competition where the
+  state is strong and chaos where it is weak. Turning to 146,000 georeferenced Afrobarometer respondents,
+  we find that fragmentation raises material service delivery yet *erodes* citizens' trust in and
+  responsiveness from local government — an accountability cost invisible to economic proxies, and
+  consistent with fragmented donors bypassing the state. Fragmentation in weak states thus trades
+  visible service substitution against growth and legitimacy.
 keywords:
   - Foreign Aid
   - Nightlights
   - Fragmentation
   - Subnational Government
+  - Afrobarometer
 bibliography: references.bib
 csl: chicago-author-date.csl
 execute:
@@ -69,828 +82,403 @@ execute:
 
 ```{r setup}
 if (!require("pacman")) install.packages("pacman")
-pacman::p_load(tidyverse, here, fixest, kableExtra, patchwork)
+pacman::p_load(tidyverse, here, fixest, kableExtra, knitr)
 
-# ── Helper functions (verbatim from analysis_walkthrough.qmd) ─────────────────
+# Load PRE-COMPUTED results (built by 02_scripts/02_analysis/25,27,28). The
+# manuscript does not re-estimate the grid-cell PPML models at render time.
+rc  <- readRDS(here("03_output", "wb_robust_clean.rds"))     # es, att, tri
+tri <- rc$tri
+tct <- as.data.frame(fixest::coeftable(tri))
 
-norm_nl <- function(d) {
-  if (!"mean_nl" %in% names(d) && "mean" %in% names(d)) {
-    d <- rename(d, mean_nl = mean)
-  }
-  d
-}
+get <- function(term, col = 1) tct[term, col]
+b_triple <- get("matureT:frag_pre:scale(sgq1)", 1)
+p_triple <- get("matureT:frag_pre:scale(sgq1)", 4)
 
-build_vars <- function(data, uid, aid_var, frag_var, pop_var) {
-  data |>
-    arrange(.data[[uid]], year) |>
-    group_by(.data[[uid]]) |>
-    mutate(
-      lag_mean_nl  = dplyr::lag(mean_nl, 1L),
-      lag2_mean_nl = dplyr::lag(mean_nl, 2L),
-      lag_frag     = dplyr::lag(.data[[frag_var]], 1L),
-      lag_log_pop  = dplyr::lag(.data[[pop_var]],  1L),
-      lag_total_aid = log(dplyr::lag(.data[[aid_var]], 1L) + 0.01),
-      total_aid_raw = dplyr::lag(.data[[aid_var]], 1L),
-      log_lag_nl   = log(dplyr::lag(mean_nl, 1L) + 0.01),
-      nl_growth = case_when(
-        is.na(lag_mean_nl) ~ NA_real_,
-        TRUE ~ ((log(mean_nl + 0.01) - log(lag_mean_nl + 0.01)) / 5) * 100
-      ),
-      pre_nl_growth = case_when(
-        is.na(lag2_mean_nl) ~ NA_real_,
-        TRUE ~ ((log(lag_mean_nl + 0.01) - log(lag2_mean_nl + 0.01)) / 5) * 100
-      )
-    ) |>
-    ungroup()
-}
+# event-study peak (years since arrival = 10)
+es  <- as.data.frame(fixest::coeftable(rc$es))
+es$et <- as.integer(gsub(".*::(-?\\d+).*", "\\1", rownames(es)))
+es_peak <- es$Estimate[which.max(es$et)]
 
-winsorise <- function(d, v, lo = 0.05, hi = 0.95) {
-  vals <- d[[v]]
-  if (sum(is.finite(vals)) < 20) return(d)
-  q    <- quantile(vals, c(lo, hi), na.rm = TRUE)
-  d[[v]] <- pmax(pmin(vals, q[2]), q[1])
-  d
-}
+# Afrobarometer outcome effects (frag main effects, country+wave FE)
+afro <- readr::read_csv(here("03_output", "afro_capacity_moderation.csv"),
+                        show_col_types = FALSE)
+af <- function(v, col = "frag") afro[[col]][afro$outcome == v]
 
-add_cap <- function(d, sgq_var, pct = 0.75) {
-  cut <- quantile(d[[sgq_var]], pct, na.rm = TRUE)
-  mutate(d, high_cap = as.integer(.data[[sgq_var]] > cut))
-}
-
-to_ld <- function(d, uid) {
-  d |>
-    group_by(.data[[uid]]) |>
-    filter(year == max(year, na.rm = TRUE)) |>
-    ungroup()
-}
-
-est_ols <- function(d, y) {
-  feols(
-    as.formula(paste0(y, " ~ lag_frag + lag_total_aid + lag_log_pop + log_lag_nl")),
-    cluster = ~GID_0,
-    data    = filter(d, is.finite(.data[[y]]), is.finite(log_lag_nl))
-  )
-}
-
-est_fe <- function(d, y, fe = "GID_0") {
-  feols(
-    as.formula(paste0(y, " ~ lag_frag + lag_total_aid + lag_log_pop + log_lag_nl | ", fe)),
-    cluster = ~GID_0,
-    data    = filter(d, is.finite(.data[[y]]), is.finite(log_lag_nl))
-  )
-}
-
-est_2sls <- function(d, y, fe = "GID_0") {
-  feols(
-    as.formula(paste0(
-      y, " ~ lag_frag + lag_log_pop + log_lag_nl | ", fe,
-      " | lag_total_aid ~ IV_lag"
-    )),
-    cluster = ~GID_0,
-    data = filter(
-      d,
-      is.finite(.data[[y]]),
-      is.finite(lag_frag),
-      is.finite(log_lag_nl),
-      is.finite(lag_total_aid),
-      is.finite(IV_lag)
-    )
-  )
-}
-
-est_cfa <- function(d, y, fe = "GID_0") {
-  s1d <- filter(
-    d,
-    is.finite(total_aid_raw),
-    is.finite(IV_lag),
-    is.finite(lag_log_pop),
-    is.finite(log_lag_nl)
-  )
-  if (nrow(s1d) < 30) return(NULL)
-  s1 <- feols(
-    as.formula(paste0(
-      "total_aid_raw ~ IV_lag + lag_log_pop + lag_frag + log_lag_nl | ", fe
-    )),
-    cluster = ~GID_0,
-    data    = s1d
-  )
-  s2d <- mutate(s1d, cfa_resid = resid(s1)) |>
-    filter(
-      is.finite(.data[[y]]),
-      is.finite(lag_frag),
-      is.finite(lag_total_aid),
-      is.finite(cfa_resid)
-    )
-  feols(
-    as.formula(paste0(
-      y, " ~ lag_frag + lag_total_aid + lag_log_pop + log_lag_nl + cfa_resid | ", fe
-    )),
-    cluster = ~GID_0,
-    data    = s2d
-  )
-}
-
-# ── Global constants ──────────────────────────────────────────────────────────
-
-DICT <- c(
-  lag_frag          = "Frag. Index ($t{-}1$)",
-  lag_total_aid     = "Ln Aid ($t{-}1$)",
-  fit_lag_total_aid = "Ln Aid ($t{-}1$) [IV]",
-  lag_log_pop       = "Ln Pop ($t{-}1$)",
-  log_lag_nl        = "Ln NL ($t{-}1$)",
-  IV_lag            = "Bartik IV ($t{-}1$)",
-  cfa_resid         = "CFA Residual",
-  lag_donor_count   = "Donor Count ($t{-}1$)",
-  lag_frag3         = "Tail Share ($t{-}1$)",
-  lag_fragbelow     = "N Small Donors ($t{-}1$)",
-  nl_growth         = "$\\Delta$ NL Growth",
-  u5m               = "Under-5 Mortality",
-  pre_nl_growth     = "$\\Delta$ NL Growth (Pre-period)",
-  total_aid_raw     = "Total Aid (USD)"
-)
-SIG <- c("***" = 0.01, "**" = 0.05, "*" = 0.1)
-
-# ── Load data ─────────────────────────────────────────────────────────────────
-
-TAG <- "_5year_1995_2015"
-
-raw_a1 <- read_csv(
-  here("01_panel_data", paste0("panel_aid_admin1_fin", TAG, ".csv")),
-  show_col_types = FALSE
-) |> norm_nl()
-
-raw_a2 <- read_csv(
-  here("01_panel_data", paste0("panel_aid_admin2_fin", TAG, ".csv")),
-  show_col_types = FALSE
-) |> norm_nl()
-
-# ── Build full pre-ld panels (needed for stacked windows and horse-race) ──────
-
-full_a1 <- build_vars(raw_a1, "GID_1", "total_aid_admin1",
-                      "frag_index_admin1", "ln_pop_admin1") |>
-  winsorise("nl_growth")
-
-full_a2 <- build_vars(raw_a2, "GID_2", "total_aid_admin2",
-                      "frag_index_admin2", "ln_pop_admin2") |>
-  winsorise("nl_growth")
-
-# ── Long-difference panels (one terminal observation per unit) ────────────────
-
-panel_a1 <- to_ld(full_a1, "GID_1") |> add_cap("mean_sgq_admin1")
-panel_a2 <- to_ld(full_a2, "GID_2") |> add_cap("mean_sgq_admin2")
-
-hi_a1 <- filter(panel_a1, high_cap == 1L)
-lo_a1 <- filter(panel_a1, high_cap == 0L)
-hi_a2 <- filter(panel_a2, high_cap == 1L)
-lo_a2 <- filter(panel_a2, high_cap == 0L)
-
-# ── Stacked 2-window panels (2010 + 2015) ────────────────────────────────────
-
-stacked_a1 <- full_a1 |>
-  filter(year %in% c(2010L, 2015L), !is.na(lag_frag), !is.na(nl_growth)) |>
-  add_cap("mean_sgq_admin1")
-
-stacked_a2 <- full_a2 |>
-  filter(year %in% c(2010L, 2015L), !is.na(lag_frag), !is.na(nl_growth)) |>
-  add_cap("mean_sgq_admin2")
-
-# ── Table 1: Escalating identification (full sample, admin1) ─────────────────
-
-m_ols  <- est_ols(panel_a1,  "nl_growth")
-m_fe   <- est_fe(panel_a1,   "nl_growth")
-m_2sls <- est_2sls(panel_a1, "nl_growth")
-
-# ── Table 2: Capacity heterogeneity ──────────────────────────────────────────
-
-hi_cfa    <- est_cfa(hi_a1, "nl_growth")
-lo_cfa    <- est_cfa(lo_a1, "nl_growth")
-hi_a2_fe  <- est_fe(hi_a2,  "nl_growth")   # admin2: no IV in sector/admin2 files
-lo_a2_fe  <- est_fe(lo_a2,  "nl_growth")
-
-# ── Table 3: Scale mechanism ──────────────────────────────────────────────────
-
-m_cfa   <- est_cfa(panel_a1, "nl_growth")
-
-stk_fe  <- feols(
-  nl_growth ~ lag_frag + lag_total_aid + lag_log_pop + log_lag_nl |
-    GID_0^year + GID_1,
-  cluster = ~GID_0,
-  data    = filter(stacked_a1, is.finite(nl_growth), is.finite(log_lag_nl))
-)
-
-a2_fe   <- est_fe(panel_a2, "nl_growth")
-
-a2_stk  <- feols(
-  nl_growth ~ lag_frag + lag_total_aid + lag_log_pop + log_lag_nl |
-    GID_0^year + GID_2,
-  cluster = ~GID_0,
-  data    = filter(stacked_a2, is.finite(nl_growth), is.finite(log_lag_nl))
-)
-
-# ── Table 4: U5M outcome ──────────────────────────────────────────────────────
-
-u5_ols <- est_ols(filter(panel_a1, !is.na(u5m)), "u5m")
-u5_fe  <- est_fe( filter(panel_a1, !is.na(u5m)), "u5m")
-u5_cfa <- est_cfa(filter(panel_a1, !is.na(u5m)), "u5m")
-hi_u5  <- est_cfa(filter(hi_a1,    !is.na(u5m)), "u5m")
-lo_u5  <- est_cfa(filter(lo_a1,    !is.na(u5m)), "u5m")
-
-# ── IV diagnostics (Appendix A1) ─────────────────────────────────────────────
-
-iv_base <- panel_a1 |>
-  filter(
-    is.finite(IV_lag),
-    is.finite(total_aid_raw),
-    is.finite(lag_log_pop),
-    is.finite(log_lag_nl),
-    is.finite(lag_frag)
-  )
-
-first_stage <- feols(
-  total_aid_raw ~ IV_lag + lag_frag + lag_log_pop + log_lag_nl | GID_0,
-  cluster = ~GID_0,
-  data    = iv_base
-)
-
-rf_nl <- feols(
-  nl_growth ~ IV_lag + lag_frag + lag_log_pop + log_lag_nl | GID_0,
-  cluster = ~GID_0,
-  data    = filter(iv_base, is.finite(nl_growth))
-)
-
-placebo <- feols(
-  pre_nl_growth ~ IV_lag + lag_frag + lag_log_pop + log_lag_nl | GID_0,
-  cluster = ~GID_0,
-  data    = filter(iv_base, is.finite(pre_nl_growth))
-)
-
-# ── Robustness: Winsorization (Appendix B1) ───────────────────────────────────
-
-make_w <- function(lo, hi) {
-  d <- build_vars(
-    raw_a1, "GID_1", "total_aid_admin1", "frag_index_admin1", "ln_pop_admin1"
-  ) |>
-    winsorise("nl_growth", lo, hi) |>
-    to_ld("GID_1") |>
-    add_cap("mean_sgq_admin1")
-  est_cfa(d, "nl_growth")
-}
-
-wins_mods <- list(
-  "1/99"  = make_w(0.01, 0.99),
-  "5/95"  = make_w(0.05, 0.95),
-  "10/90" = make_w(0.10, 0.90)
-)
-
-# ── Robustness: Alternative fragmentation measures (Appendix B2) ──────────────
-
-hr_base <- full_a1 |>
-  group_by(GID_1) |>
-  mutate(
-    lag_donor_count = dplyr::lag(donor_count_admin1, 1L),
-    lag_frag3       = dplyr::lag(frag_3_admin1,      1L),
-    lag_fragbelow   = dplyr::lag(frag_below10_admin1, 1L)
-  ) |>
-  filter(year == max(year, na.rm = TRUE)) |>
-  ungroup() |>
-  filter(
-    is.finite(nl_growth),
-    is.finite(lag_frag),
-    is.finite(lag_total_aid),
-    is.finite(lag_log_pop),
-    is.finite(log_lag_nl)
-  )
-
-ctrl_f <- "lag_total_aid + lag_log_pop + log_lag_nl | GID_0"
-
-mhr1 <- feols(
-  as.formula(paste("nl_growth ~ lag_frag +", ctrl_f)),
-  cluster = ~GID_0, data = hr_base
-)
-mhr2 <- feols(
-  as.formula(paste("nl_growth ~ lag_donor_count +", ctrl_f)),
-  cluster = ~GID_0,
-  data = filter(hr_base, is.finite(lag_donor_count))
-)
-mhr3 <- feols(
-  as.formula(paste("nl_growth ~ lag_frag3 +", ctrl_f)),
-  cluster = ~GID_0,
-  data = filter(hr_base, is.finite(lag_frag3))
-)
-mhr4 <- feols(
-  as.formula(paste("nl_growth ~ lag_fragbelow +", ctrl_f)),
-  cluster = ~GID_0,
-  data = filter(hr_base, is.finite(lag_fragbelow))
-)
-mhr5 <- feols(
-  as.formula(paste("nl_growth ~ lag_frag + lag_donor_count +", ctrl_f)),
-  cluster = ~GID_0,
-  data = filter(hr_base, is.finite(lag_donor_count))
-)
-
-# ── Robustness: Alternative capacity moderators (Appendix B3) ────────────────
-
-fac_cut <- quantile(panel_a1$mean_fac_admin1, 0.75, na.rm = TRUE)
-svc_cut <- quantile(panel_a1$mean_svc_admin1, 0.75, na.rm = TRUE)
-
-malt_hf <- est_fe(filter(panel_a1, mean_fac_admin1 >  fac_cut), "nl_growth")
-malt_lf <- est_fe(filter(panel_a1, mean_fac_admin1 <= fac_cut), "nl_growth")
-malt_hs <- est_fe(filter(panel_a1, mean_svc_admin1 >  svc_cut), "nl_growth")
-malt_ls <- est_fe(filter(panel_a1, mean_svc_admin1 <= svc_cut), "nl_growth")
-
-# ── Sector models (Figure 1) ──────────────────────────────────────────────────
-
-SECTOR_FILES <- list(
-  health       = here("01_panel_data", paste0("panel_aid_admin1_health",       TAG, ".csv")),
-  education    = here("01_panel_data", paste0("panel_aid_admin1_educ",         TAG, ".csv")),
-  infra        = here("01_panel_data", paste0("panel_aid_admin1_infra",        TAG, ".csv")),
-  gov_support  = here("01_panel_data", paste0("panel_aid_admin1_gov_support",  TAG, ".csv")),
-  humanitarian = here("01_panel_data", paste0("panel_aid_admin1_humanitarian", TAG, ".csv"))
-)
-SECTOR_LABELS <- c(
-  health       = "Health",
-  education    = "Education",
-  infra        = "Infrastructure",
-  gov_support  = "Governance Support",
-  humanitarian = "Humanitarian"
-)
-
-run_sector <- function(path) {
-  raw <- tryCatch(
-    read_csv(path, show_col_types = FALSE) |> norm_nl(),
-    error = function(e) NULL
-  )
-  if (is.null(raw)) return(NULL)
-  panel <- build_vars(
-    raw, "GID_1", "total_aid_admin1", "frag_index_admin1", "ln_pop_admin1"
-  ) |>
-    winsorise("nl_growth") |>
-    to_ld("GID_1") |>
-    add_cap("mean_sgq_admin1")
-  list(
-    full = tryCatch(est_fe(panel, "nl_growth"),                        error = function(e) NULL),
-    hi   = tryCatch(est_fe(filter(panel, high_cap == 1L), "nl_growth"), error = function(e) NULL),
-    lo   = tryCatch(est_fe(filter(panel, high_cap == 0L), "nl_growth"), error = function(e) NULL)
-  )
-}
-
-sector_mods <- lapply(SECTOR_FILES, run_sector)
-sector_mods <- Filter(Negate(is.null), sector_mods)
-
-# Build coef table for sector plot
-pull_coef <- function(m, sector, group) {
-  if (is.null(m)) return(NULL)
-  est <- coef(m)["lag_frag"]
-  se_val <- se(m)["lag_frag"]
-  if (is.na(est)) return(NULL)
-  tibble(
-    sector = SECTOR_LABELS[[sector]],
-    group  = group,
-    est    = est,
-    lo95   = est - 1.96 * se_val,
-    hi95   = est + 1.96 * se_val,
-    lo90   = est - 1.645 * se_val,
-    hi90   = est + 1.645 * se_val
-  )
-}
-
-sector_coefs <- bind_rows(lapply(names(sector_mods), function(s) {
-  bind_rows(
-    pull_coef(sector_mods[[s]]$full, s, "Full"),
-    pull_coef(sector_mods[[s]]$hi,   s, "High Capacity"),
-    pull_coef(sector_mods[[s]]$lo,   s, "Low Capacity")
-  )
-}))
-
-# ── Inline summary scalars ────────────────────────────────────────────────────
-
-n_countries   <- n_distinct(panel_a1$GID_0)
-n_a1          <- nrow(filter(panel_a1, is.finite(nl_growth), is.finite(lag_frag)))
-n_a2          <- nrow(filter(panel_a2, is.finite(nl_growth), is.finite(lag_frag)))
-n_provinces   <- n_distinct(panel_a1$GID_1)
-n_districts   <- n_distinct(panel_a2$GID_2)
-fs_fstat_val  <- round(fitstat(m_2sls, "ivwald")[[1]]$stat, 1)
-
-# ── Scale diagnostic scalars ─────────────────────────────────────────────────
-# Within-province SD of Admin2 fragmentation (shows Admin2 ≠ just noise)
-within_prov_sd_a2 <- raw_a2 |>
-  select(GID_1, GID_2, year, frag_index_admin2) |>
-  filter(!is.na(frag_index_admin2)) |>
-  group_by(GID_1, year) |>
-  summarise(sd_a2 = sd(frag_index_admin2, na.rm = TRUE), .groups = "drop") |>
-  pull(sd_a2) |>
-  mean(na.rm = TRUE) |>
-  round(2)
-
-# Correlation between Admin1 and mean Admin2 fragmentation (lagged)
-scale_corr <- panel_a2 |>
-  filter(!is.na(lag_frag)) |>
-  group_by(GID_1) |>
-  summarise(mean_a2_frag = mean(lag_frag, na.rm = TRUE), .groups = "drop") |>
-  inner_join(
-    filter(panel_a1, !is.na(lag_frag)) |> select(GID_1, a1_frag = lag_frag),
-    by = "GID_1"
-  ) |>
-  summarise(r = round(cor(a1_frag, mean_a2_frag, use = "complete.obs"), 2)) |>
-  pull(r)
-
-# Number of districts per province on average
-avg_dist_per_prov <- panel_a2 |>
-  group_by(GID_1) |>
-  summarise(n = n_distinct(GID_2), .groups = "drop") |>
-  pull(n) |>
-  mean(na.rm = TRUE) |>
-  round(1)
-
-# ── Malawi case study scalars ─────────────────────────────────────────────────
-n_mw_districts  <- n_distinct(filter(panel_a1, GID_0 == "MWI")$GID_1)
-n_mw_ta         <- n_distinct(filter(panel_a2, GID_0 == "MWI")$GID_2)
-mw_frag_a1_mean <- round(mean(filter(panel_a1, GID_0 == "MWI")$lag_frag, na.rm = TRUE), 3)
-mw_frag_a2_mean <- round(mean(filter(panel_a2, GID_0 == "MWI")$lag_frag, na.rm = TRUE), 3)
+fig <- function(f) here("03_output", "figs", f)
+pct <- function(x) sprintf("%.0f", 100 * x)
 ```
-
-\vspace{0.5em}
-\noindent\textbf{JEL Codes:} F35, O19, H77, O55
-
-\noindent\textbf{Keywords:} Foreign aid, donor fragmentation, subnational governance, nightlights, Sub-Saharan Africa
-
-\vspace{0.5em}
-\noindent{\small\textit{Working paper. Comments welcome. Please do not circulate without permission.}}
-
-\newpage
 
 # Introduction
 
-Foreign aid fragmentation — where multiple donors operate largely independently in the same region or sector — has long been criticized for undermining economic development in recipient countries. Extant research highlights how uncoordinated donors lead to high transaction costs, project duplication, and an overburdened bureaucracy [@acharya_proliferation_2006; @knack_donor_2007]. Indeed, a number of empirical findings link aid fragmentation to weaker institutions, increased corruption, and reduced economic growth [@knack_donor_2007]. Yet more recent research suggests that fragmentation can, under certain circumstances, foster positive impacts on recipient countries. By expanding the "marketplace of ideas," fragmentation increases competition between donors, driving innovation which can offer recipient governments more choice and minimizes dependence on any single donor [@gehring_aid_2017].
+Foreign aid fragmentation — many donors operating largely independently in the same place — has
+long been criticized for undermining development through high transaction costs, duplicated
+projects, and overburdened bureaucracies [@acharya_proliferation_2006; @knack_donor_2007]. Yet
+recent work argues that fragmentation can help: by expanding the "marketplace of ideas," competing
+donors may spur innovation and reduce a recipient's dependence on any single patron
+[@gehring_aid_2017; @han_aid_2015]. The same phenomenon stifles development in some contexts and
+boosts it in others. Why?
 
-This new lens — where fragmentation sometimes hinders, yet occasionally boosts development — poses a clear puzzle: why does fragmentation stifle economic growth in some contexts, while boosting it in others? We argue that local government capacity offers a critical explanation. Drawing on subnational evidence, we show that in regions where local government capacity is stronger, governments are better able to mitigate the problems inherent in donor fractionalization. These higher-capacity regions can better coordinate multiple donors, reduce the strain of overlapping bureaucratic demands, and even leverage donor competition to secure better long-term economic gains. At the same time, those regions with weaker local government capacity are unable to manage fragmented donor engagement and are more likely to experience the conventional pitfalls of fragmentation. By analyzing donor fragmentation at the subnational level, we are able to connect the newly divergent empirical findings on fragmentation and both theorize and demonstrate how local governance capacity can transform fragmentation from a liability into a more manageable constraint for economic growth.
+We argue that local government capacity is central to resolving this puzzle, and that the answer
+has two faces — one material, one political. Where subnational administrations are strong, they can
+coordinate multiple donors, absorb overlapping demands, and even leverage donor competition; where
+they are weak, fragmentation produces the conventional pathologies. But fragmentation also reshapes
+the relationship between citizens and the state: when many donors deliver services while bypassing
+local government, citizens may receive more material benefits yet credit and trust their own
+government *less*. Aid effectiveness, in other words, is not only about whether the lights come on,
+but about whether the state is strengthened in the process.
 
-Capitalizing on the GODAD dataset [@bomprezzi_wedded_2024], we construct a fragmentation index at two administrative scales — the first (province) and second (district) levels per GADM[^gadm] — and match these to geocoded Afrobarometer data from which we construct three measures of subnational governance quality. This two-level design is not merely a robustness check. Our central theoretical claim is that fragmentation's coordination costs accumulate at the administrative tier responsible for managing the *complete* donor portfolio: the provincial government. District governments engage donors project by project and are not required to integrate across the full donor ecosystem simultaneously. We therefore predict that the negative effect of fragmentation should be concentrated at Admin1 and substantially attenuated at Admin2. The contrast between levels thus functions as a within-sample mechanistic test — the spatial pattern of effects speaks directly to the bandwidth channel rather than to alternative explanations such as factor-market competition or donor-selection bias. We then fit cross-sectional OLS, fixed-effects, and shift-share instrumental variable (IV) models to estimate the effect of fragmentation on nightlights growth and its interaction with governance capacity. We find a robust negative effect of fragmentation on provincial-level growth, attenuated in higher-capacity regions and close to zero at the district level — a pattern consistent across estimators and temporal windows.
+Testing these claims requires variation in aid that is both spatially precise and plausibly
+exogenous to local trends — a demanding standard the geocoded-aid literature rarely meets. Our key
+empirical move exploits a feature of the data: in the GODAD database [@bomprezzi_wedded_2024], the
+**World Bank is the only donor geocoded to exact project locations**; virtually every other donor
+is recorded only at the district centroid. Rather than measure fragmentation at a spurious
+sub-district resolution, we use the World Bank as a precisely located, well-timed treatment and ask
+whether its local development return depends on the donor environment — district donor fragmentation
+— and on local state capacity.
 
-[^gadm]: Per GADM 4.1; see <https://gadm.org/>.
+Our findings form a coherent three-part picture. First, using a continuous, sensor-harmonized
+nightlights series and an event-study design, World Bank project arrival is followed by rising
+local economic activity (roughly `r pct(es_peak)`\% higher luminosity a decade out), though we are
+cautious about the level effect because the pooled pre-trends are not perfectly flat. Second, this
+return is eroded by donor fragmentation *only where state capacity is weak* — a moderation that,
+unlike the level effect, survives a test for differential pre-trends: the
+fragmentation-by-capacity interaction is large and precise (`r round(b_triple, 2)`,
+$p `r ifelse(p_triple < 0.001, "< 0.001", paste0("= ", round(p_triple,3)))`$) — competition where
+the state is strong, chaos where it is weak. Third, drawing on 146,000 georeferenced Afrobarometer
+respondents, fragmentation raises material service delivery but lowers trust in and responsiveness
+from local government — the accountability cost that nightlights cannot see. Fragmentation in weak
+states thus trades visible service substitution against growth and legitimacy.
 
-The paper proceeds as follows. Section 2 outlines the theoretical grounding for why subnational governments may mediate the negative effects of fragmentation. Section 3 describes the data and construction of the panel. Section 4 presents results and discusses what they mean for the theorized mechanism.
+The paper proceeds as follows. Section 2 develops the theory. Section 3 describes the data and the
+World Bank–arrival design. Section 4 presents the three sets of results. Section 5 reports
+robustness, and Section 6 concludes.
 
 # Theory
 
-There is no shortage of research focusing on the problems of aid fragmentation. The focus, since the earliest work, has been on its potential to increase transaction costs and place undue strain on the administrative capacities of recipient countries [@knack_donor_2007]. When numerous donors operate independently in the same region or sector, recipient governments must navigate divergent reporting requirements, budgeting cycles, and procurement rules. The increased work can overburden public officials, detract from core governance tasks, and even siphon off the most skilled local staff into donor-funded roles [@knack_donor_2007]. This duplication of efforts may not only weaken local bureaucracies, but can dilute the potential impact of aid by creating a "brain drain" and hindering the longer-term institutional strengthening of local bureaucracies.
+## Fragmentation: liability or competitive discipline?
 
-Other work demonstrates the impact of a lack of coordination on recipients. When donors fail to coordinate, their individual goals and incentives result in both overlapping projects and projects that can contradict each other. This misalignment can lead to duplication of projects, gaps in coverage in areas that recipients have marked as vital, and a failure to comprehensively understand and address the needs of the recipient country — all resulting in less effective development aid [@acharya_proliferation_2006]. An instructive example comes from Mozambique. In a 2005 report, Killick et al. estimated that more than 2.5 missions per week were started in Mozambique in 2004, with multiple donors running parallel projects under distinct reporting and monitoring frameworks, contradictory project goals, and disrupted government development plans.
+When numerous donors operate independently, recipient governments must navigate divergent reporting
+requirements, budget cycles, and procurement rules. This burden can overload officials, divert
+skilled staff into donor-funded roles, and crowd out core governance tasks [@knack_donor_2007]. A
+lack of coordination produces overlapping and sometimes contradictory projects, coverage gaps, and a
+failure to address recipient priorities coherently [@acharya_proliferation_2006]. A 2005 evaluation
+of Mozambique estimated more than 2.5 donor missions per week in 2004, with parallel projects under
+distinct monitoring frameworks disrupting government plans.^[Killick, T., Castel-Branco, C., and
+Gerster, R. (2005). *Perfect Partners? The Performance of Programme Aid Partners in Mozambique,
+2004.* Maputo.]
 
-Fragmentation can also lead to weaker programs as donors favor quick wins over long-term institution building, resulting in weaker governance structures and reduced aid effectiveness [@knack_donor_2007]. Empirical studies further indicate that fragmentation may exacerbate corruption, especially when donors compete to disburse funds rapidly, potentially reducing oversight and accountability [@acharya_proliferation_2006].
+Yet fragmentation is not inherently harmful [@han_aid_2015; @gehring_aid_2017]. Multiple donors can
+introduce competition, spur innovation, and — in sectors requiring diverse expertise — respond more
+comprehensively to complex problems [@carlitz_harmony_2024]. Fragmentation can reduce donor
+dominance, strengthen recipient bargaining power, and cushion the political shock of any single
+donor's withdrawal [@gutting_donor_2017]. Whether fragmentation becomes liability or competitive
+discipline is therefore contingent — and we argue the binding contingency is local.
 
-Killick et al.'s summary of the agriculture sector in Mozambique illustrates these constraints:
+## State capacity as the moderator
 
-> *PROAGRI is not a real SWAp — it is rather a basket arrangement, in which some donors insist on earmarking within this fund and some also support individual projects falling outside it. Whereas donors and Ministry staff agree that significant improvements have occurred with respect to financial management and accountability, they also agree that this has been the only substantial positive impact of PROAGRI. [...] PROAGRI has had no effect on the development of agricultural capabilities and had little impact on the Ministry's performance in delivering core services. [...] This is mainly due to fragmented donor interventions and the continuing strength of established individual niches and of the interests (and rent-seeking) that such fragmentation often creates.*
+Local government capacity — the institutional ability of subnational authorities to coordinate
+stakeholders, manage resources, and implement policy [@faguet_decentralization_2014;
+@mansuri_localizing_2013] — determines whether fragmentation is absorbed or amplified. From the
+perspective of embedded autonomy [@evans_embedded_1995] and state-directed development
+[@kohli_state-directed_2004], capable subnational actors can convene donors, integrate overlapping
+demands into local planning, and extract better terms from donor competition. Where this capacity is
+present, the presence of many donors can be parlayed into more comprehensive strategies; where it is
+absent, duplication and short-termism dominate. This yields our first hypothesis:
 
-Yet recent work challenges the notion that fragmentation is inherently bad [@han_aid_2015; @gehring_aid_2017]. The idea is that under certain conditions, multiple donors could introduce competition and potentially spur innovation, leading to a benefit for recipient governments [@han_aid_2015]. In some sectors — particularly those requiring diverse skill sets or specialized interventions — multiple independent donors might collectively respond more comprehensively to complex challenges [@gehring_aid_2017; @carlitz_harmony_2024]. Moreover, fragmentation can sometimes reduce donor dominance, giving recipient governments greater bargaining power over project design, and can reduce the risk of aid shocks and the political destabilization that follows from a sudden reduction in aid from a given donor [@gutting_donor_2017].
+> **H1:** Local governance capacity attenuates the negative effect of donor fragmentation on the
+> local development return to aid.
 
-Donors and recipients alike recognize the problems inherent to fragmentation. Starting with the DAC's "Shaping the 21st Century" in 1996 and continuing with subsequent high-level meetings, policy documents continually emphasize the importance of reducing fragmentation and strengthening harmonization. Yet, despite the best of intentions, little has been achieved towards decreasing fragmentation — the competing interests and priorities of donors that lead to fragmentation in the first place are precisely what hampers their ability to coordinate. Instead, recipients have turned to strategies focused on bargaining with donors [@swedlund_can_2017], engaging lead donors [@steinwand_compete_2015], and leveraging non-state actors to complement donor efforts.
+## The legitimacy channel: delivery without attribution
 
-These strategies underscore how recipient governments seek to manage donor fragmentation through bargaining. Whether these efforts succeed depends on contextual factors — regime type, corruption, sector-specific needs, and political stability — that shape whether fragmented aid can be harnessed for constructive ends [@acharya_proliferation_2006; @knack_donor_2007; @carlitz_harmony_2024].
+Capacity speaks to whether fragmentation depresses *economic* returns. But fragmentation also has a
+distinctly political consequence that economic proxies miss. When donors are numerous and
+uncoordinated, they increasingly deliver services through parallel structures — their own
+implementing agencies, NGOs, and project units — rather than through, or in partnership with, local
+government. Citizens may then experience improved material conditions that are visibly *not* the
+work of their elected local officials. The result is a wedge between material delivery and political
+attribution: services rise, but trust in and perceived responsiveness of local government fall,
+because the state is bypassed rather than strengthened. This logic predicts opposite-signed effects
+of fragmentation on tangible service access versus citizen evaluations of local government:
 
-Yet while much of this discussion focuses on national-level conditions, a few studies have demonstrated that local governance arrangements can vary dramatically even within countries, affecting how donors (fail to) coordinate on the ground [@faguet_decentralization_2014]. Despite cross-country and sectoral variations, the research on fragmentation has often overlooked the substantial heterogeneity within countries. Local governance structures, administrative capacity, and political willingness can differ drastically across regions. Examining aid fragmentation sub-nationally — and in particular the ways in which local government capacity shapes outcomes — offers a more nuanced view of how multiple donors may either impede or enhance development.
+> **H2:** Donor fragmentation raises material service delivery while eroding citizens' trust in and
+> responsiveness from local government.
 
-**Subnational Government Capacity**
+Where the two hypotheses meet is instructive. In weak-capacity districts, fragmented donors have
+both the strongest incentive and the clearest opening to substitute for an absent state — delivering
+visible services precisely where the government cannot — while the coordination chaos depresses
+broad-based growth and the bypass erodes legitimacy. Strong-capacity districts, by contrast, already
+deliver, so donors add less on the margin but do less coordination harm.
 
-Government capacity is a critical element in mitigating the potential drawbacks of aid fragmentation while harnessing its potential benefits [@gehring_aid_2017]. Local capacity and aid fragmentation, from the perspective of embedded autonomy [@evans_embedded_1995], means that state actors (even at the regional or municipal level) are autonomous enough from donors to plan their regional development goals, yet remain closely embedded in local networks that provide information, accountability, and legitimacy. Similarly, state-directed development underscores the importance of strong, capable institutions that can steer policies effectively [@kohli_state-directed_2004]. At the subnational level, capacity entails not only formal administrative strength but also adaptability and embeddedness: local officials must be adept at navigating donor requirements, aligning them with community priorities, and preserving institutional coherence over time. In this way, higher-capacity regions can parlay the presence of numerous donors into more comprehensive and context-specific development strategies, rather than succumbing to the duplication, short-term disbursements, or institutional strains that typically accompany aid fragmentation.
+# Data and the World Bank–Arrival Design
 
-Local government capacity — the institutional ability of subnational authorities to coordinate stakeholders, manage resources, and implement policies in line with development objectives [@faguet_decentralization_2014; @mansuri_localizing_2013] — represents a critical element in mitigating the potential drawbacks of aid fragmentation while harnessing its potential benefits. This capacity helps governments to: (1) foster better donor coordination, (2) lower transaction costs, and (3) leverage donor competition for more favorable development outcomes. While national authorities often set broad aid priorities, subnational authorities frequently oversee day-to-day operations such as site selection, budgeting details, and stakeholder engagement. Faguet's work on Bolivia details how local officials directly negotiated with international donors over infrastructure and service delivery projects following decentralization [@faguet_decentralization_2014]. Thus, local government capacity is pivotal for managing the administrative and technical burdens associated with aid fragmentation.
+## Sample and unit of analysis
 
-*Fostering Better Donor Coordination.*
-Capable local administrations can convene donor representatives, set regional priorities, and encourage collaborative project planning [@mansuri_localizing_2013]. For instance, municipalities in Bolivia formed local committees and used transparent budgeting procedures to coordinate donor inflows around local needs, preventing duplicative infrastructure projects [@faguet_decentralization_2014]. Higher-capacity local governments can align multiple donors more seamlessly, thus diminishing coordination failures and translating foreign aid into greater local economic growth. This predicts the negative effect of fragmentation to be largest where government capacity is weakest, and attenuated — though not reversed — where governance quality is strong. *Table 2 tests this prediction.*
+We study Sub-Saharan Africa over 2000–2020. The primary spine is a grid of
+$0.1^\circ \times 0.1^\circ$ cells (\textasciitilde11 km) over the 33 countries for which we have
+geocoded GODAD aid, a harmonized nightlights series, and Afrobarometer coverage — 159,780 cells, or
+3.4 million cell-years. Each cell is assigned to its country, province (Admin1), and district
+(Admin2) by point-in-polygon against GADM 4.1.[^gadm]
 
-*Lowering Transaction Costs.*
-A well-equipped local government with robust bureaucratic systems can handle overlapping donor demands more efficiently [@knack_donor_2007; @carlitz_harmony_2024]. By establishing clear rules and processes for integrating donor projects into local finance and planning frameworks, high-capacity subnational authorities minimize duplicative paperwork and oversight gaps [@mansuri_localizing_2013], enabling officials to concentrate on core governance tasks — thereby producing greater development outcomes and stronger economic growth. Lower-capacity governments have less bureaucratic infrastructure to absorb fragmentation costs — fewer standing donor-coordination committees, weaker unified reporting systems, thinner aid-liaison staff. This predicts the negative effect is *larger* in low-capacity regions. *Table 2 tests this prediction.*
+[^gadm]: Per GADM 4.1; see <https://gadm.org/>.
 
-*Leveraging Donor Competition.*
-Capable local governments may capitalize on donor competition to secure more favorable project terms or resources [@han_aid_2015; @gehring_aid_2017]. Well-staffed bureaucracies can evaluate donor track records and push for greater accountability measures, ensuring that competition yields high-quality interventions rather than superficial spending [@mansuri_localizing_2013]. Thus, with strong local capacity, fragmentation can shift from a liability to a source of resource maximization, leading to greater economic growth. This predicts *attenuation* rather than reversal of the fragmentation effect in high-capacity regions. *Table 2 and the sector analysis in Figure 1 test this prediction.*
+## Treatment: precisely located World Bank projects
 
-Taken together, these three mechanisms predict that governance capacity moderates fragmentation's harm:
+GODAD [@bomprezzi_wedded_2024] records aid projects with geocoding precision codes. A feasibility
+audit of the Sub-Saharan sample reveals a decisive asymmetry: among projects geocoded to a precise
+point (within roughly 25 km of a named place), `r 99`\% are World Bank projects. Every other major
+donor — the United States and the large European bilaterals — is recorded only at coarse precision,
+overwhelmingly snapped to the district centroid. **Donor fragmentation is therefore not observable
+at sub-district resolution; it is a district-level phenomenon.** We turn this constraint into a
+design: we use precisely located World Bank projects (7,603 distinct coordinates across 32
+countries, with project start years spread across 1995–2018) as a spatially sharp, well-timed
+treatment, and treat fragmentation and capacity as district moderators.
 
-> **H1:** Local governance capacity mitigates the negative relationship between donor fragmentation and economic growth.
+For each cell-year we code `wb_active` $=1$ when a precise World Bank project is active in the cell
+(between its start and closing years), and define event time as years since the cell's first World
+Bank arrival.
 
-**Administrative Scale and the Locus of Coordination Costs**
+## Outcome: a continuous nightlights series
 
-The capacity argument above says *who* bears fragmentation costs most heavily. A separate but related question is *where* — at which administrative level — those costs concentrate. The answer depends on the institutional architecture of subnational governance in Sub-Saharan Africa.
+Our economic outcome is mean nighttime luminosity per cell-year. Critically, we use the
+bloom- and top-code-corrected, **sensor-harmonized continuous DMSP-scale series** from Regan's
+*world\_nightlights*, which downscales VIIRS to the DMSP footprint to produce a single comparable
+series.[^nl] This choice is not cosmetic: the widely used raw harmonized product exhibits a 2.3-fold
+discontinuity at the 2013–2014 DMSP-to-VIIRS transition that, because it scales with cell
+brightness, survives country-by-year fixed effects and manufactures spurious within-cell declines in
+event-study designs. The continuous series rises smoothly across the transition. Because 71\% of
+cell-years are zero, we estimate all luminosity models by Poisson pseudo-maximum-likelihood (PPML),
+which handles zeros natively and yields coefficients interpretable as proportional effects, avoiding
+the unit-dependence of $\log(y + c)$ transformations.
 
-Provincial governments (Admin1) serve as the primary counterparts for multi-sector donor coordination. It is at this level that formal donor working groups meet, unified development plans are drafted, and the full portfolio of active donors must be synthesized into coherent government policy. When ten donors are simultaneously active in a province — each with distinct procurement rules, budget cycles, and monitoring frameworks — the provincial government must integrate all ten. This is the central coordination problem. As fragmentation increases, the number of integration tasks grows more than proportionally (each additional donor introduces interactions with every incumbent), and the provincial government's finite administrative bandwidth is the binding constraint.
+[^nl]: Tanner Regan, *world\_nightlights* (<https://github.com/tannerregan/world_nightlights>):
+bloom correction, top-coding correction, and DMSP–VIIRS harmonization.
 
-District governments (Admin2) occupy a fundamentally different position in the coordination architecture. Districts in SSA typically engage donors at the *project* rather than *portfolio* level. A district health officer coordinates with the NGO building a specific clinic; a district education officer liaises with the bilateral donor running a particular teacher-training programme; a district roads official supervises one infrastructure contractor. Each relationship is handled separately, and the district government is not generally required to simultaneously integrate across all active donors into a single institutional framework. The cross-portfolio coordination burden — the task of producing a coherent synthesis from a fragmented donor ecosystem — accumulates upward to the provincial tier, not downward to individual district offices.
+## Moderators: fragmentation and capacity
 
-This institutional distinction generates a sharp spatial prediction. Measuring fragmentation as donor concentration within an administrative unit, we expect strong negative effects at Admin1 (where portfolio coordination is required) and substantially attenuated effects at Admin2 (where project-level engagement is the norm). Importantly, this is not equivalent to predicting that Admin2 estimates will be noisier versions of Admin1 estimates. Admin1 and Admin2 fragmentation are correlated — a province with many donors will tend to have many donors in its constituent districts — but they measure qualitatively different phenomena. Admin1 fragmentation reflects the diversity of the portfolio that the provincial government must integrate; Admin2 fragmentation reflects the diversity of donors active at specific project sites within a district. The two capture different levels of the principal–agent chain between donors and governments. Accordingly, we advance a second hypothesis:
+*Donor fragmentation* is the district-level (Admin2) concentration of **non–World Bank** donors,
+measured over a fixed pre-period (1995–2004) so that it is predetermined relative to the outcome
+window. Formally, $\textit{frag}_{d} = 1 - \sum_j s_{jd}^2$, where $s_{jd}$ is donor $j$'s share of
+non–World Bank disbursements in district $d$; higher values mean a more fragmented donor field.
 
-> **H2:** The negative effect of donor fragmentation on local economic growth is concentrated at the provincial (Admin1) level and substantially attenuated at the district (Admin2) level, because portfolio-level coordination costs accumulate at the administrative tier responsible for integrating the full donor portfolio simultaneously.
+*State capacity* is the Afrobarometer subnational governance-quality index, an established measure
+of citizens' assessments of local-government performance, aggregated to the province. We use it to
+moderate the *material* outcomes (nightlights and service delivery), for which it is empirically
+independent (its correlation with the service-count outcomes is near zero). For *citizen-evaluation*
+outcomes it is, by construction, the same latent quantity and cannot serve as a non-circular
+moderator; there we instead use distance to the country's economic core (the brightest baseline
+cell), a standard external proxy for the projection of state authority.
 
-This prediction is valuable for identification beyond H1. If fragmentation harmed growth through channels that are scale-invariant — factor-market crowding-out, labor competition for skilled workers, or general resource-allocation distortions — we would expect negative effects at both administrative levels. The spatial pattern of Admin1 harm alongside Admin2 near-zeros thus constitutes evidence for the specific bandwidth/portfolio-coordination channel and against more generic accounts of fragmentation harm. *Table 3 tests H2 directly.*
+## Citizen outcomes: Afrobarometer
 
-**Malawi as an Illustrative Case**
+To measure the political dimension of aid effectiveness, we use 146,000 georeferenced Afrobarometer
+respondents (rounds 3–6, 2005–2015). The outcomes concern **local government** specifically: trust
+in the elected local council, whether councilors listen (responsiveness), corruption of councilors,
+contact with officials, and local handling of roads and markets; plus two enumeration-area
+infrastructure counts (services: electricity/water/sewage/cell; facilities:
+post/school/police/clinic/market). Variable orientations were verified against the survey value
+labels.
 
-The institutional logic of H2 is most legible when examined against a specific country context. Malawi is an unusually informative case: its Aid Management Platform is among the most comprehensive subnational aid databases in Sub-Saharan Africa, and its governance architecture cleanly separates the portfolio-coordination and project-coordination tiers. Under GADM 4.1, Malawi's 27 Admin1 units correspond to the country's districts — the basic unit of decentralized government under the Local Government Act of 1998. Malawi's three historical regions (Northern, Central, Southern) are purely statistical groupings with no administrative, budgetary, or planning authority and do not appear in the GADM hierarchy. Each District Assembly, led by a District Commissioner and staffed by District Development Coordinators, is the formal government counterpart for the donor community. Coordinators receive project proposals, host donor missions, and produce Annual District Development Plans that must integrate all active donors into a coherent spending framework. At the district, portfolio coordination is precisely the governing problem. By contrast, the 97 Admin2 units in our Malawi sample — Traditional Authorities (TAs) — are sub-district cells that receive individual project activities without any institutional mandate to synthesize a broader donor portfolio. The upward accumulation of coordination costs from project sites to the district is not a theoretical assumption; it is the organizational design of Malawian governance.
+## Estimation
 
-Direct evidence that district-level coordination burdens remained unresolved even after concerted international effort comes from @nunnenkamp_aid_2016. Drawing on geocoded Aid Management Platform data covering 30 donor agencies and approximately US\$5.3 billion in commitments (roughly 80\% of all ODA to Malawi), they find no evidence that donor specialization improved following the Paris Declaration. The number of active donors *increased* in almost all of Malawi's districts after 2005, with at least eight of the ten largest donors simultaneously active in twelve districts during 2006–2010. They conclude that "the regional division of labour among donors may even have deteriorated," and report that the district-level fragmentation index rose from 2005 to 2009. The administrative tier responsible for integration — the district — thus absorbed an increasingly fragmented portfolio rather than a gradually coordinated one.
-
-Our own data corroborate this picture. Among the `r n_mw_districts` districts in our Malawi Admin1 sample, the mean (lagged) fragmentation index is `r mw_frag_a1_mean`. Among the `r n_mw_ta` Traditional Authorities (Admin2), the mean falls to `r mw_frag_a2_mean`, and many TAs record a single active donor in a given period — the mono-project signature of project-level rather than portfolio-level engagement. This two-tier distribution reflects the institutional structure: fragmentation accumulates at the district, attenuates below it. The formal coordination infrastructure reinforces the asymmetry: Malawi's Development Assistance Coordination Unit and Sector Working Groups operate at the national level, with no systematic sub-district equivalent. At the district level, partner response rates for financing information average only 29 percent, compared to 72 percent nationally, and 85 percent of health aid visible at the national level is invisible at the district level [@bwalya_donor_2024] — indicating that the coordination burden is real, assigned to districts, and largely unsupported by formal sub-national coordination infrastructure. This is precisely the institutional environment in which H2 predicts an Admin1 fragmentation penalty alongside an Admin2 near-zero.
-
-# Data and Methods
-
-To test the empirical implications of our argument, we analyze how economic growth at the local level is impacted by local fragmentation, local government capacity, and their interaction. We analyze sub-Saharan Africa over the period 1995–2015, covering `r n_countries` countries across five 5-year windows (1995, 2000, 2005, 2010, 2015).[^countries] Each 5-year window aggregates aid flows across that period and matches them to the economic outcome measured at the end of the window, capturing cumulative donor effects rather than noisy year-to-year fluctuations.
-
-[^countries]: The sample covers all Sub-Saharan African countries for which we have geocoded aid data in GODAD, a harmonized nightlights series, and at least one wave of Afrobarometer. We retain countries across all four waves of Afrobarometer (rounds 3–6) to exploit temporal variation in subnational governance quality.
-
-**Dependent Variable.**
-To proxy for economic development at the local level, we rely on nightlights data from the Harmonized DMSP-VIIRS yearly dataset. Nightlights have been used as a proxy for economic growth since the seminal paper by @henderson_measuring_2012. Although recent research has highlighted measurement error concerns for rural, agricultural areas [@gibson_which_2021], we believe that given the aggregation of spatial units and the emphasis on regional trends, the data can reasonably estimate growth at both levels of aggregation.
-
-The 2005–2013 break in the Nighttime Light (NTL) time-series — from DMSP-OLS to VIIRS — requires harmonization due to different radiance ranges and spatial resolutions. We use the calibration methods and resulting dataset implemented by @regan_illuminating_2023, which creates a standardized pixel-level panel of nightlights before and after 2013. We compute an areal average of each polygon as our main dependent variable, following @bigsten_international_2015, using the mean rather than the sum to avoid bias toward larger spatial units. Our outcome variable is the annualized log growth rate of mean nightlights over each 5-year window:
-
-$$\Delta \text{NL}_{it} = \frac{\ln(\text{NL}_{it} + 0.01) - \ln(\text{NL}_{i,t-1} + 0.01)}{5} \times 100$$
-
-**Fragmentation Index.**
-To measure aid fragmentation we rely on the Geocoded Open Data for Aid and Development (GODAD) dataset [@bomprezzi_wedded_2024]. GODAD is based on the OECD's Creditor Reporting System (CRS) and provides geocoded information on aid projects for the 1973–2020 period. Using GODAD, we construct the most commonly used fragmentation index in the literature, based on the Herfindahl-Hirschman Index [@knack_donor_2007]:
-
-$$\text{HHI}_{it} = \sum_{j=1}^{N} \pi_{jit}^2$$
-
-where $j$ indexes donors within administrative unit $i$ in period $t$, and $\pi_{jit}$ is donor $j$'s share of total aid. We subtract from 1, so that higher values indicate more dispersed (fragmented) donor portfolios. We additionally construct a set of complementary measures: the share of aid going to donors outside the top three (tail share), a count of donors with less than 10% share, and a simple donor count. For each year–admin unit pair we calculate total aid in 2014 constant USD, dividing project disbursements evenly across all regions receiving that project.
-
-**Governance Capacity.**
-To measure government capacity, we rely on data from Afrobarometer rounds 3–6. Following closely @iddawela_quality_2021, we construct a subnational governance perceptions index (SGQ) across 7 items — trust in local government, perceived performance of local government councilors, responsiveness, road maintenance, market maintenance, contact with officials, and perceived corruption (reverse-coded) — rescaled to a 0–100 range:
-
-$$\text{SGQ}_{i} = 100 \cdot \frac{\bar{S}_i - S_{\min}}{S_{\max} - S_{\min}}$$
-
-We additionally construct two EA-level infrastructure counts from Afrobarometer enumerator records: a services index (`mean_svc`, 0–4) and a facilities index (`mean_fac`, 0–5), which count the types of services and physical facilities observed in each enumeration area. We use the SGQ index as our primary capacity measure and the infrastructure indices as robustness checks; we hypothesize the perception indicator is a better indicator of actual government functioning because it directly reflects citizens' experience with local governance.
-
-We match Afrobarometer enumeration areas to GODAD using geocoded EA coordinates provided by AidData, covering 37 African countries in rounds 1–6. SGQ values observed in survey years are linearly interpolated between waves and carried forward/backward where necessary to fill the panel.
-
-**Control Variables.**
-We include the log of population (from WorldPop) as a control variable. Following the recent literature, we rely on fixed effects to absorb additional unobserved heterogeneity.
-
-**Empirical Strategy.**
-Our panel covers `r n_a1` province-period observations across `r n_provinces` provinces (Admin1) and `r n_a2` district-period observations across `r n_districts` districts (Admin2). Provinces and districts are the first and second administrative units per GADM 4.1; on average, each province contains approximately `r avg_dist_per_prov` districts in our sample.
-
-The two-level structure of our data is central to the identification of the mechanism. Primary estimates use Admin1 (province), where H1 and H2 jointly predict the effect should be strongest. Admin2 (district) estimates serve as a within-sample mechanistic test of H2: if the provincial-level finding reflects portfolio-coordination costs rather than scale-invariant channels, we expect it to attenuate sharply at the district level. Crucially, Admin2 fragmentation is not a noisy re-measurement of Admin1 fragmentation — within each province, district-level donor concentration varies substantially (within-province standard deviation of admin2 fragmentation: `r within_prov_sd_a2`). The province-level HHI and the mean district-level HHI within the same province are correlated at $r = `r scale_corr`$, indicating that the two measures are related but capture meaningfully different dimensions of the donor landscape. Admin1 fragmentation reflects the portfolio that the provincial government must coordinate; Admin2 fragmentation reflects project-level donor presence at individual sites.
-
-We adopt a *long-difference* estimator as our primary specification: we use only the most recent observation per unit, regressing the growth rate (the annualized log change from the previous 5-year bucket) on lagged fragmentation and controls. This reduces noise from year-to-year measurement error in nightlights and focuses on variation in the donor landscape that persists across periods. We estimate heterogeneity by splitting the sample above and below the 75th percentile of SGQ.
-
-We estimate three specifications for comparison:
-
-**(1) Cross-sectional OLS** (no fixed effects), which establishes the raw conditional correlation between fragmentation and growth:
-
-$$\Delta \text{NL}_{it} = \beta_1 \text{Frag}_{it-1} + \beta_2 \ln(\text{Aid}_{it-1}) + \beta_3 \ln(\text{Pop}_{it-1}) + \beta_4 \ln(\text{NL}_{it-1}) + \varepsilon_{it}$$
-
-**(2) Country fixed effects** (preferred OLS), which controls for time-invariant country-level confounders by absorbing country dummies alongside initial nightlights. Because we use the long-difference (one terminal observation per unit), unit fixed effects would be collinear with the outcome — country FE captures the most important source of between-region confounding (donor landscape selection at the national level):
-
-$$\Delta \text{NL}_{it} = \beta_1 \text{Frag}_{it-1} + \beta_2 \ln(\text{Aid}_{it-1}) + \beta_3 \ln(\text{Pop}_{it-1}) + \beta_4 \ln(\text{NL}_{it-1}) + \alpha_c + \varepsilon_{it}$$
-
-**(3) Shift-share IV (2SLS)**, which instruments for total aid volume using a Bartik-style shift-share design to address endogenous donor allocation. The instrument for region $i$ in period $t$ is:
-
-$$\text{IV}_{it} = \sum_j \bar{p}_{ji} \cdot \text{Frac}_{jt}$$
-
-where $\bar{p}_{ji} = \frac{1}{T}\sum_t \mathbf{1}[\text{aid}_{jit} > 0]$ is the historical probability that region $i$ received aid from donor $j$ (fixed across time), and $\text{Frac}_{jt}$ is the domestic government fractionalization of donor country $j$ in period $t$ from the Database of Political Institutions [@beck_new_2001]. We use the lag of this instrument, $\text{IV}_{i,t-1}$, as the excluded instrument for $\ln(\text{Aid}_{it-1})$. Country fixed effects are included in all IV specifications, and standard errors are clustered at the country level throughout.
-
-**(4) Control Function Approach (CFA)**, used for heterogeneity analysis. In the first stage, we regress total aid (in levels) on the Bartik IV plus controls. We include first-stage residuals in the second stage alongside fragmentation. This recovers the causal effect of fragmentation conditional on instrumented aid volume, while preserving the full sample for the capacity-split analysis.
-
-The first-stage F-statistic for the full admin1 sample is `r fs_fstat_val`, well above conventional thresholds, confirming instrument relevance. The exclusion restriction requires that donor government fractionalization affects local nightlights growth only through its effect on aid volume — not through direct political channels. Appendix A provides first-stage estimates, reduced-form coefficients, and a placebo test using pre-period nightlights growth.
+The benchmark luminosity model is an event study estimated by PPML with cell and country-by-year
+fixed effects and standard errors clustered by country:
+$$
+\mathbb{E}\!\left[\textit{NL}_{ct}\right] = \exp\!\Big(\textstyle\sum_{k} \beta_k \,
+\mathbf{1}\{\textit{event time}_{ct} = k\} + \alpha_c + \delta_{g(c)t}\Big).
+$$
+Cells that never receive a World Bank project serve as controls. We then interact a matured-treatment
+indicator (three or more years since arrival) with district fragmentation and standardized capacity
+to test H1, and relate Afrobarometer outcomes to predetermined fragmentation (with province and wave
+fixed effects) to test H2.
 
 # Results
 
-## Main Estimates
+## World Bank aid raises local economic activity
 
-Table 1 presents escalating identification for the full admin1 sample. Column (1) is cross-sectional OLS; Column (2) adds country fixed effects; Column (3) instruments total aid with the Bartik shift-share IV. The fragmentation coefficient is negative and significant across all three specifications, with the IV estimate larger in magnitude — consistent with attenuation bias in OLS from measurement error in aid volumes. The IV estimate implies that moving from the 25th to the 75th percentile of the fragmentation distribution reduces annualized nightlights growth by approximately 0.4 percentage points per year.
+@fig-event reports the event study. The post-arrival effect rises steadily, reaching roughly
+`r pct(es_peak)`\% higher luminosity a decade out. The pre-period leads are individually small and
+statistically insignificant, but we caution that they are not jointly zero: a Wald test of the
+seven leads rejects flatness ($p < 0.001$), and a linear fit through them implies a modest upward
+pre-slope ($\approx 0.01$ per year). The estimated World Bank *level* effect should therefore be
+read as suggestive rather than cleanly causal — a portion could reflect the Bank siting projects in
+locations on gentle upward trajectories. As we show next, our central result is not this level
+effect but its *moderation* by state capacity, a difference-in-differences-in-differences that is
+biased by pre-trends only if those trends differ across capacity groups — a condition we test
+directly and cannot reject.
 
-```{r tbl-main}
-#| results: asis
-cat(etable(
-  m_ols, m_fe, m_2sls,
-  headers     = c("(1) OLS", "(2) Country FE", "(3) 2SLS"),
-  dict        = DICT,
-  se.below    = TRUE,
-  signif.code = SIG,
-  fitstat     = c("n", "r2", "ivf"),
-  style.tex   = style.tex("aer", tpt = TRUE),
-  notes       = "\\textit{Notes:} Dependent variable: annualized nightlights growth (pp/yr). Controls: lag log total aid, lag log population, lag log nightlights. Standard errors clustered at the country level. Long-difference estimator (terminal observation per unit).",
-  tex         = TRUE,
-  label       = "tab:main",
-  title       = "Main Estimates: Escalating Identification (Admin1)"
-))
-```
-
-## Governance Capacity Heterogeneity
-
-Table 2 presents capacity heterogeneity using the control function approach (admin1, columns 1–2) and country fixed effects (admin2, columns 3–4). At the admin1 level, the fragmentation coefficient is more negative for low-capacity regions (below the 75th SGQ percentile) than for high-capacity regions — consistent with H1. At the admin2 (district) level, the effect is close to zero in both subgroups, reinforcing the scale-dependent interpretation: coordination costs that fragmentation imposes on government bandwidth operate at the provincial, not district, level.
-
-```{r tbl-het}
-#| results: asis
-cat(etable(
-  hi_cfa, lo_cfa, hi_a2_fe, lo_a2_fe,
-  headers     = c("(1) Hi Admin1", "(2) Lo Admin1", "(3) Hi Admin2", "(4) Lo Admin2"),
-  dict        = DICT,
-  se.below    = TRUE,
-  signif.code = SIG,
-  fitstat     = c("n", "r2"),
-  style.tex   = style.tex("aer", tpt = TRUE),
-  notes       = "\\textit{Notes:} Dependent variable: annualized nightlights growth (pp/yr). Admin1 columns use the control function approach (CFA); Admin2 columns use country FE only (IV not available at Admin2). High/Low capacity split at the 75th percentile of the subnational SGQ index. Standard errors clustered at the country level.",
-  tex         = TRUE,
-  label       = "tab:het",
-  title       = "Capacity Heterogeneity: High vs.\\ Low Governance Quality"
-))
-```
-
-## The Scale Mechanism: Admin1 vs. Admin2
-
-Table 3 tests H2 directly by comparing fragmentation effects across spatial scales and estimation windows. The results are sharp: the negative effect of fragmentation is confined to the provincial (Admin1) level and is statistically indistinguishable from zero at the district (Admin2) level, a pattern that holds in both the long-difference and stacked-window specifications.
-
-At Admin1, columns (1) and (2) show consistent negative and significant coefficients on fragmentation, with the CFA long-difference and the stacked FE estimates of similar sign and magnitude. This stability across estimators — one using a single terminal observation per province, the other exploiting within-province change across two periods — suggests the finding is not an artefact of any single identification choice. At Admin2, columns (3) and (4) return near-zero coefficients in both the long-difference and stacked specifications, with confidence intervals that rule out effects of the same magnitude as those found at Admin1.
-
-This spatial pattern carries distinct inferential weight. Consider the principal alternative explanations for why a province with many donors might grow more slowly:
-
-*Factor-market competition.* Many donors in one geography could bid up wages for skilled workers (teachers, engineers, health officers), driving up government payrolls or crowding out private-sector employment. This channel would operate at least as strongly at the district level — where donors and firms compete for the same local labor pool — as at the provincial level. The near-zero Admin2 estimate is inconsistent with this explanation.
-
-*Donor selection.* Donors may disproportionately enter provinces or districts with worse growth trajectories (crisis response, high-need environments), inducing a negative correlation between fragmentation and growth through selection rather than causation. Selection into harder contexts would manifest across both administrative levels — donors choosing difficult environments would do so at both province and district scale. The Admin2 null argues against selection as the primary driver of the Admin1 finding.
-
-*Measurement noise in nightlights.* One might worry that Admin2 estimates are simply noisier: smaller units produce less reliable nightlights averages. If this were the main explanation for the Admin2 null, we would expect wide confidence intervals centered on a negative point estimate. Instead, Admin2 point estimates are close to zero, and the intervals are informative enough to reject effects comparable to those at Admin1. The null is not driven by imprecision.
-
-What the Admin1 finding and Admin2 null together support is the specific portfolio-coordination channel: the mechanism operates where the government entity is responsible for simultaneously integrating a fragmented donor ecosystem into a coherent institutional framework. That responsibility sits with the provincial government, not with the individual district offices that manage project-level donor relationships. The result is thus not a scale effect on measurement, but a scale effect on governance function.
-
-```{r tbl-scale}
-#| results: asis
-cat(etable(
-  m_cfa, stk_fe, a2_fe, a2_stk,
-  headers     = c("(1) A1 Long-diff", "(2) A1 Stacked", "(3) A2 Long-diff", "(4) A2 Stacked"),
-  dict        = DICT,
-  se.below    = TRUE,
-  signif.code = SIG,
-  fitstat     = c("n", "r2"),
-  style.tex   = style.tex("aer", tpt = TRUE),
-  notes       = "\\textit{Notes:} Dependent variable: annualized nightlights growth. Columns (1)--(2): admin1 (province); columns (3)--(4): admin2 (district). Long-diff = one terminal observation per unit; Stacked = 2010 and 2015 windows, absorbing unit and country-by-year FE. Standard errors clustered at the country level.",
-  tex         = TRUE,
-  label       = "tab:scale",
-  title       = "Scale Mechanism: Admin1 vs.\\ Admin2, Long-Difference vs.\\ Stacked"
-))
-```
-
-## Health Outcomes
-
-Table 4 extends the analysis to under-5 mortality (U5M) as an alternative outcome measuring a direct welfare dimension of aid effectiveness. Column (1) is OLS; Column (2) adds country FE; Column (3) uses the CFA on the full sample; Columns (4)–(5) split by governance capacity. The positive coefficients indicate that higher fragmentation is associated with *higher* U5M (worse health outcomes). The effect is concentrated in low-capacity regions, consistent with the nightlights findings and the theoretical mechanism: fragmented health aid is harder to coordinate into coherent primary-care delivery systems in weak-capacity regions.
-
-```{r tbl-u5m}
-#| results: asis
-cat(etable(
-  u5_ols, u5_fe, u5_cfa, hi_u5, lo_u5,
-  headers     = c("(1) OLS", "(2) Country FE", "(3) CFA Full", "(4) CFA Hi Cap", "(5) CFA Lo Cap"),
-  dict        = DICT,
-  se.below    = TRUE,
-  signif.code = SIG,
-  fitstat     = c("n", "r2"),
-  style.tex   = style.tex("aer", tpt = TRUE),
-  notes       = "\\textit{Notes:} Dependent variable: under-5 mortality rate (IHME). Positive coefficients indicate higher mortality (worse outcomes). CFA columns use the control function approach. High/Low capacity split at 75th percentile of SGQ. Standard errors clustered at the country level.",
-  tex         = TRUE,
-  label       = "tab:u5m",
-  title       = "Health Outcomes: Under-5 Mortality"
-))
-```
-
-## Sector Decomposition
-
-Figure 1 presents country-FE estimates of the fragmentation coefficient separately for five aid sectors — health, education, infrastructure, governance support, and humanitarian — split by governance capacity. Governance support and education show the strongest negative effects, consistent with these sectors being bandwidth-intensive: fragmented governance-support aid requires unified counterpart ministries; fragmented education aid requires coordinated curriculum and teacher-training frameworks. Infrastructure and health show near-zero estimates consistent with clearer geographic division of labor and less ministerial co-ordination required. Humanitarian aid shows a large negative point estimate but wide confidence intervals, likely reflecting crisis-selection confounds: donors respond to crises in fragmented ways, complicating identification.
-
-```{r fig-sector}
-#| fig-cap: "Sector-specific fragmentation coefficients by governance capacity. Points are OLS estimates with country FE; horizontal bars show 90% and 95% confidence intervals. Dependent variable: annualized nightlights growth. Standard errors clustered at the country level."
+```{r fig-event}
+#| label: fig-event
+#| fig-cap: "World Bank project arrival and local nightlights. PPML event study with cell and country-by-year fixed effects; never-treated cells as controls; 95\\% CIs clustered by country. Reference year is $t-1$."
 #| fig-width: 7
-#| fig-height: 4.5
-
-if (nrow(sector_coefs) > 0) {
-  sector_coefs <- sector_coefs |>
-    mutate(
-      sector = factor(sector, levels = rev(unique(SECTOR_LABELS))),
-      group  = factor(group, levels = c("Full", "High Capacity", "Low Capacity"))
-    )
-
-  ggplot(sector_coefs, aes(x = est, y = sector, colour = group, shape = group)) +
-    geom_vline(xintercept = 0, linetype = "dashed", colour = "grey50") +
-    geom_errorbarh(aes(xmin = lo95, xmax = hi95),
-                   height = 0, linewidth = 0.4, position = position_dodge(0.6)) +
-    geom_errorbarh(aes(xmin = lo90, xmax = hi90),
-                   height = 0, linewidth = 0.9, position = position_dodge(0.6)) +
-    geom_point(size = 2.5, position = position_dodge(0.6)) +
-    scale_colour_manual(
-      values = c("Full" = "grey30", "High Capacity" = "#2166AC", "Low Capacity" = "#D6604D"),
-      name   = "Capacity group"
-    ) +
-    scale_shape_manual(
-      values = c("Full" = 16, "High Capacity" = 17, "Low Capacity" = 15),
-      name   = "Capacity group"
-    ) +
-    labs(
-      x = "Fragmentation coefficient (annualized NL growth, pp/yr)",
-      y = NULL,
-      title = "Figure 1: Fragmentation Effect by Sector and Governance Capacity"
-    ) +
-    theme_bw(base_size = 11) +
-    theme(legend.position = "bottom", panel.grid.minor = element_blank())
-}
+#| fig-height: 4.3
+knitr::include_graphics(fig("fig1_wb_event_study.png"))
 ```
+
+## Competition or chaos: the role of state capacity
+
+Whether fragmentation undermines this return depends sharply on local state capacity. Table 1
+reports the moderation model. The triple interaction of the matured World Bank effect
+with district fragmentation and capacity is positive, large, and precise
+(`r round(b_triple, 2)`). Because capacity is standardized, the implication is direct: in
+low-capacity districts the World Bank's return falls steeply with fragmentation, while in
+high-capacity districts the penalty vanishes. @fig-chaos plots the marginal effect of
+fragmentation on the World Bank's impact across the capacity distribution — it is negative where the
+state is weak and crosses to positive where the state is strong. This is the "competition or chaos"
+result: the same donor crowding that strong states harness, weak states cannot.
+
+```{r tab-mod}
+#| label: tab-mod
+tab <- tct[c("matureT", "matureT:frag_pre", "matureT:scale(sgq1)",
+             "matureT:frag_pre:scale(sgq1)"), 1:4]
+rownames(tab) <- c("WB effect (matured)",
+                   "$\\times$ Fragmentation",
+                   "$\\times$ Capacity",
+                   "$\\times$ Fragmentation $\\times$ Capacity")
+colnames(tab) <- c("Estimate", "Std. Err.", "$z$", "$p$")
+kbl(tab, booktabs = TRUE, digits = 3, escape = FALSE, linesep = "",
+    caption = "Donor fragmentation, state capacity, and the World Bank's nightlights effect (PPML, cell and country-by-year FE; SEs clustered by country).") |>
+  kable_styling(latex_options = c("hold_position"), font_size = 9) |>
+  footnote(general = "Matured = 3+ years since World Bank arrival. Capacity (Afrobarometer subnational governance quality) standardized. Fragmentation = predetermined 1995--2004 non--World Bank district HHI.",
+           general_title = "", threeparttable = TRUE, footnote_as_chunk = TRUE)
+```
+
+```{r fig-chaos}
+#| label: fig-chaos
+#| fig-cap: "Marginal effect of donor fragmentation on the World Bank's nightlights effect, across state capacity. Shaded band is the 95\\% CI. Negative (chaos) where capacity is low; positive (competition) where capacity is high."
+#| fig-width: 7
+#| fig-height: 4.3
+knitr::include_graphics(fig("fig2_frag_x_capacity_nightlights.png"))
+```
+
+## Material delivery versus political legitimacy
+
+The economic results speak to whether aid "works." Afrobarometer lets us ask a different question:
+what fragmentation does to the relationship between citizens and their government. @fig-afro
+and Table 2 reveal a clean divergence. Predetermined district
+fragmentation is associated with *more* material service delivery — significantly higher
+enumeration-area service and facility counts and better-maintained roads and markets — but with
+*lower* trust in local government, less perceived responsiveness, more perceived corruption, and
+less contact with officials. The point estimate on trust in the local council is
+`r round(af("trust_rec"), 2)` ($p `r ifelse(af("trust_rec","frag_p") < 0.001, "< 0.001", paste0("= ", round(af("trust_rec","frag_p"),3)))`$), while the service-count effect is
+`r round(af("ea_svc_index"), 2)` and strongly positive.
+
+This is the legitimacy channel of H2: fragmented donors deliver goods while bypassing the state, so
+citizens get services but attribute and trust less. It is an accountability cost that economic
+proxies, by their nature, cannot detect.
+
+```{r fig-afro}
+#| label: fig-afro
+#| fig-cap: "Donor fragmentation and citizen outcomes (Afrobarometer, predetermined fragmentation; country and wave FE; 95\\% CIs clustered by country). Green: material delivery. Red: relationship with the state."
+#| fig-width: 7.5
+#| fig-height: 5
+knitr::include_graphics(fig("fig3_afro_material_vs_relational.png"))
+```
+
+```{r tab-afro}
+#| label: tab-afro
+lab <- c(trust_rec="Trust in local govt.", listen_rec="Local govt. listens",
+         corruption_rec="Local govt. clean", contact_rec="Contact w/ officials",
+         maintian_road_rec="Roads maintained", ea_svc_index="Services (count)",
+         ea_fac_index="Facilities (count)")
+at <- afro[match(names(lab), afro$outcome), ]
+out <- data.frame(Outcome = lab,
+                  Estimate = round(at$frag, 3),
+                  `p-value` = round(at$frag_p, 3),
+                  N = formatC(at$n, big.mark = ",", format = "d"),
+                  check.names = FALSE)
+kbl(out, booktabs = TRUE, escape = FALSE, row.names = FALSE, linesep = "",
+    caption = "Donor fragmentation and Afrobarometer outcomes. Material-delivery measures rise; relational measures fall.") |>
+  kable_styling(latex_options = c("hold_position"), font_size = 9) |>
+  pack_rows("Material delivery", 5, 7) |>
+  pack_rows("Relationship with the state", 1, 4)
+```
+
+## Substitution where the state is absent
+
+The two halves meet in the cross-section of capacity. Moderating the service-delivery result by the
+(here non-circular) capacity index shows that fragmentation's service boost is *largest where
+capacity is lowest*: the fragmentation-by-capacity interaction on the service count is negative and
+significant. Where the state is absent, fragmented donors substitute for it, building visible
+infrastructure; where the state already delivers, additional donors add less. Read together with the
+nightlights result — where capacity *buffers* the growth penalty — the picture is one of weak-state
+districts receiving more tangible services from fragmented donors while paying for it in
+coordination chaos (lower growth) and bypassed legitimacy (lower trust).
+
+# Robustness
+
+We report both supportive checks and the genuine fragilities the design carries.
+
+**Pre-trends.** The pooled event-study leads are *not* jointly zero ($p < 0.001$), so the World Bank
+level effect is not cleanly identified and we treat it as suggestive. The relevant test for our
+headline moderation result is whether pre-trends *differ by capacity*: interacting the leads with a
+high-capacity indicator, the differential leads are jointly insignificant ($p = 0.18$), though two of
+the five are individually significant. The moderation is thus better supported than the level
+effect, but not pristine.
+
+**Spatial scale.** The fragmentation-by-capacity interaction is large and precise at the
+$0.1^\circ$ resolution but attenuates to insignificance when cells are aggregated to $0.25^\circ$.
+Part of this is mechanical — coarsening averages treated and untreated sub-cells together and
+dilutes every treatment effect — but we cannot rule out genuine scale sensitivity, and a clean
+de-trending test at native resolution (cell-specific linear trends) exceeded available memory. This
+is an open robustness item.
+
+**Supportive checks.** Restricting comparisons to never-treated cells leaves the moderation
+essentially unchanged. Results use the continuous Regan nightlights series; the raw harmonized
+product's 2013–2014 DMSP–VIIRS splice manufactures artifactual within-cell declines and is rejected.
+PPML on levels avoids the unit-dependence of $\log(y+c)$ given the 71\% zero share. The capacity
+moderator is used only where it is empirically independent of the outcome (material outcomes); for
+citizen evaluations we use an external state-reach proxy.
+
+**Further limitations.** The Afrobarometer results are conditional associations (predetermined
+fragmentation with province and wave fixed effects), not the causal event-study design. Clustered
+inference rests on 33 country clusters, and PPML precludes a wild-cluster bootstrap. A
+formal sensitivity analysis for non-parallel trends (e.g., Rambachan and Roth), a native-resolution
+de-trending test, and a non-circular external institutional measure for the legitimacy channel are
+the priority extensions.
 
 # Conclusion
 
-In this paper, we attempt to reconcile the conflicting findings in the academic literature on aid fragmentation — where it sometimes stifles economic growth, yet under other conditions appears to boost it. Our subnational analysis reveals that local government capacity is a key moderating factor. In regions with stronger governance capacity, officials are better positioned to coordinate multiple donors, navigate overlapping bureaucratic requirements, and harness donor competition for long-term development gains. By contrast, weaker-capacity regions struggle to manage fragmented donor engagements, more frequently succumbing to duplication, coordination failure, and short-term disbursements at the expense of sustainable growth.
-
-Our main findings — a robust negative effect of fragmentation on provincial-level growth, attenuated in high-capacity regions and absent at the district level — are consistent across OLS, fixed-effects, IV, and control-function specifications. The shift-share IV strategy recovers a plausibly causal estimate of the aid volume effect while leaving fragmentation to be identified from conditional variation in the donor landscape. The negative provincial effect is attenuated but not reversed in high-capacity regions, consistent with capacity mitigating but not eliminating coordination costs.
-
-The Admin1/Admin2 contrast is arguably the paper's sharpest empirical contribution. The null at the district level is not a failure to find an effect — it is a positive result that speaks to mechanism. If fragmentation harmed growth through resource crowding, labor competition, or selection into difficult environments, those channels would appear at both administrative scales. The restriction of the effect to the provincial level, where governments must integrate the full donor portfolio simultaneously, points specifically to the portfolio-coordination interpretation: fragmentation harms growth by exhausting the administrative bandwidth of the government body responsible for synthesizing a fragmented donor ecosystem into coherent institutional arrangements. Districts, engaging donors project by project rather than across the full portfolio, are largely insulated from this bottleneck.
-
-The sector analysis reinforces this interpretation: coordination-intensive sectors (governance support, education) show the strongest fragmentation penalties, while sectors with clearer geographic division of labor (infrastructure, health) show near-zero effects. The U5M results further triangulate the welfare interpretation, with fragmented health aid associated with higher child mortality in low-capacity regions.
-
-\newpage
+Whether donor fragmentation is competition or chaos is not a universal property of aid — it depends
+on the state that receives it. Using the World Bank's uniquely precise geocoding as a lens, we find
+that World Bank projects raise local economic activity, but that donor fragmentation erodes this
+return where subnational capacity is weak and not where it is strong. Beyond growth, fragmentation
+carries a political cost: it raises material service delivery while lowering citizens' trust in and
+responsiveness from local government, consistent with donors delivering goods while bypassing the
+state. In weak-capacity districts these forces combine — more visible services, less growth, less
+legitimacy — a trade-off that aggregate, apolitical measures of aid effectiveness obscure. The
+policy implication is not that fragmentation should be eliminated, but that its consequences are
+mediated by, and consequential for, the local state. Strengthening subnational institutions is both
+a condition for harnessing donor competition and a hedge against the legitimacy costs of being
+bypassed.
 
 # References {-}
 
-\newpage
+::: {#refs}
+:::
 
 # Appendix {.appendix}
 
-## A: Instrument Diagnostics {.appendix}
+## A. Variables and sources {.appendix}
 
-Table A1 reports first-stage estimates (Column 1), reduced-form coefficients (Column 2), and a placebo test using the pre-period change in nightlights as the outcome (Column 3). The first-stage F-statistic is `r fs_fstat_val`, confirming instrument relevance. The reduced-form coefficient is negative and significant, consistent with the IV sign. The placebo estimate is close to zero and insignificant: the instrument does not predict *pre-period* nightlights growth, which would be required for a violation of the exclusion restriction through pre-existing trends.
-
-```{r tbl-iv-diag}
-#| results: asis
-cat(etable(
-  first_stage, rf_nl, placebo,
-  headers     = c("(1) First Stage", "(2) Reduced Form", "(3) Placebo"),
-  dict        = DICT,
-  se.below    = TRUE,
-  signif.code = SIG,
-  fitstat     = c("n", "r2"),
-  style.tex   = style.tex("aer", tpt = TRUE),
-  notes       = "\\textit{Notes:} Column (1): dependent variable is total aid (USD, lagged). Column (2): dependent variable is nightlights growth. Column (3): placebo --- dependent variable is pre-period nightlights growth. All specifications include country FE and cluster SE at country level.",
-  tex         = TRUE,
-  label       = "tab:iv_diag",
-  title       = "Appendix A1: Instrument Diagnostics"
-))
+```{r tab-vars}
+#| label: tab-vars
+v <- tribble(
+  ~Variable, ~Definition, ~Source,
+  "NL", "Mean nightlights, 0.1° cell-year (PPML outcome)", "Regan world\\_nightlights (bltcfix)",
+  "wb\\_active", "WB precise project active in cell (start--close)", "GODAD (precision 1--2)",
+  "event\\_time", "Years since first WB arrival in cell", "GODAD",
+  "frag", "1 $-$ HHI of non-WB donor shares, district, 1995--2004", "GODAD",
+  "capacity (sgq)", "Subnational governance-quality index", "Afrobarometer R3--6",
+  "reach", "Std. (neg.) distance to economic core", "derived (nightlights)",
+  "trust / listen / clean", "Local-government evaluations (1--4)", "Afrobarometer R3--6",
+  "services / facilities", "EA infrastructure counts (0--4 / 0--5)", "Afrobarometer R3--6"
+)
+kbl(v, booktabs = TRUE, escape = FALSE, linesep = "",
+    caption = "Key variables and sources. Full documentation in docs/PR\\_MEMO.md.") |>
+  kable_styling(latex_options = c("hold_position"), font_size = 9) |>
+  column_spec(2, width = "7.2cm")
 ```
 
-## B: Robustness Checks {.appendix}
-
-### B.1 Winsorization Sensitivity {.appendix}
-
-Table B1 varies the winsorization bounds applied to the nightlights growth outcome. The preferred specification uses 5/95 percentile trimming (Column 2). Columns (1) and (3) report results under 1/99 and 10/90 trimming respectively. The fragmentation coefficient is stable across all three bounds, ruling out sensitivity to outliers as an explanation for the main finding.
-
-```{r tbl-wins}
-#| results: asis
-cat(etable(
-  wins_mods[["1/99"]], wins_mods[["5/95"]], wins_mods[["10/90"]],
-  headers     = c("(1) 1/99", "(2) 5/95 (Preferred)", "(3) 10/90"),
-  dict        = DICT,
-  se.below    = TRUE,
-  signif.code = SIG,
-  fitstat     = c("n", "r2"),
-  style.tex   = style.tex("aer", tpt = TRUE),
-  notes       = "\\textit{Notes:} Dependent variable: annualized nightlights growth winsorized at indicated percentiles. All specifications use the CFA with country FE. Standard errors clustered at the country level.",
-  tex         = TRUE,
-  label       = "tab:wins",
-  title       = "Appendix B1: Winsorization Sensitivity"
-))
-```
-
-### B.2 Alternative Fragmentation Measures {.appendix}
-
-Table B2 tests alternative operationalizations of the fragmentation concept. Column (1) replicates the main result with the HHI-based index. Column (2) uses a simple donor count. Column (3) uses the tail-share (fraction of aid going to donors outside the top 3). Column (4) uses the count of donors with less than 10% share. Column (5) includes HHI and donor count jointly. Results are consistent across measures, suggesting that the finding does not depend on the specific aggregation of the donor distribution.
-
-```{r tbl-frag-alt}
-#| results: asis
-cat(etable(
-  mhr1, mhr2, mhr3, mhr4, mhr5,
-  headers     = c("(1) HHI", "(2) Count", "(3) Tail Share", "(4) Small Donors", "(5) Joint"),
-  dict        = DICT,
-  se.below    = TRUE,
-  signif.code = SIG,
-  fitstat     = c("n", "r2"),
-  style.tex   = style.tex("aer", tpt = TRUE),
-  notes       = "\\textit{Notes:} Dependent variable: annualized nightlights growth. All specifications include country FE, lag log total aid, lag log population, and lag log nightlights. Standard errors clustered at the country level.",
-  tex         = TRUE,
-  label       = "tab:frag_alt",
-  title       = "Appendix B2: Alternative Fragmentation Measures"
-))
-```
-
-### B.3 Alternative Capacity Moderators {.appendix}
-
-Table B3 uses Afrobarometer-derived infrastructure indices as alternative capacity moderators, in place of the primary SGQ perception index. The facilities index (`mean_fac`) counts types of physical infrastructure observed by enumerators; the services index (`mean_svc`) counts types of services observed. Column (1) is the full-sample estimate for reference. Columns (2)–(3) split on the facilities index; Columns (4)–(5) split on the services index. The pattern of larger negative effects in low-capacity regions is consistent across all three capacity proxies, reinforcing the conclusion that the heterogeneity is not an artifact of the specific capacity measure used.
-
-```{r tbl-cap-alt}
-#| results: asis
-cat(etable(
-  m_fe, malt_hf, malt_lf, malt_hs, malt_ls,
-  headers     = c("(1) Full", "(2) Hi Facilities", "(3) Lo Facilities",
-                  "(4) Hi Services", "(5) Lo Services"),
-  dict        = DICT,
-  se.below    = TRUE,
-  signif.code = SIG,
-  fitstat     = c("n", "r2"),
-  style.tex   = style.tex("aer", tpt = TRUE),
-  notes       = "\\textit{Notes:} Dependent variable: annualized nightlights growth. All specifications use country FE. High/Low splits at 75th percentile of the respective index. Standard errors clustered at the country level.",
-  tex         = TRUE,
-  label       = "tab:cap_alt",
-  title       = "Appendix B3: Alternative Capacity Moderators"
-))
-```
+Reproduction: the data spine is built by `02_scripts/01_cleaning/06_build_wb_grid_spine.r`; analysis
+and figures by `02_scripts/02_analysis/23–28`. Nightlights must use the continuous Regan series
+(`00_rawdata/nightlights/africa/DMSP*_bltcfix.tif`), not the raw harmonized DMSP–VIIRS product.

@@ -1,0 +1,46 @@
+\begingroup
+\centering
+\begin{table}[!htbp] \centering 
+  \caption{} 
+  \label{} 
+\begin{tabular}{lcccc}
+   \tabularnewline \midrule \midrule
+   Dependent Variable: & \multicolumn{4}{c}{log(mean\_nl+0.01)}\\
+   Model:                                              & (1)          & (2)            & (3)      & (4)\\  
+   \midrule
+   \emph{Variables}\\
+   log(total\_aid\_admin1)                             & -0.0068      &                & 0.0065   &   \\   
+                                                       & (0.0118)     &                & (0.0058) &   \\   
+   frag\_index\_admin1                                 & 0.0651$^{*}$ &                & 0.0087   &   \\   
+                                                       & (0.0370)     &                & (0.2391) &   \\   
+   log(total\_aid\_admin2)                             &              & -0.0085$^{**}$ &          & -0.0046\\   
+                                                       &              & (0.0042)       &          & (0.0049)\\   
+   frag\_index\_admin2                                 &              & -0.0526$^{*}$  &          & -0.2962\\   
+                                                       &              & (0.0286)       &          & (0.2051)\\   
+   mean\_sgq\_admin1                                   &              &                & 0.0001   &   \\   
+                                                       &              &                & (0.0029) &   \\   
+   frag\_index\_admin1 $\times$ mean\_sgq\_admin1      &              &                & 0.0013   &   \\   
+                                                       &              &                & (0.0045) &   \\   
+   mean\_sgq\_admin2                                   &              &                &          & -0.0012\\   
+                                                       &              &                &          & (0.0013)\\   
+   frag\_index\_admin2 $\times$ mean\_sgq\_admin2      &              &                &          & 0.0048\\   
+                                                       &              &                &          & (0.0039)\\   
+   \midrule
+   \emph{Fixed-effects}\\
+   GID\_0-paymentyear                                  & Yes          & Yes            & Yes      & Yes\\  
+   GID\_1                                              & Yes          &                & Yes      & \\  
+   GID\_2                                              &              & Yes            &          & Yes\\  
+   \midrule
+   \emph{Fit statistics}\\
+   Observations                                        & 1,863        & 8,727          & 1,843    & 6,388\\  
+   R$^2$                                               & 0.98094      & 0.97724        & 0.98908  & 0.98211\\  
+   Within R$^2$                                        & 0.00173      & 0.00119        & 0.00403  & 0.00103\\  
+   \midrule \midrule
+   \multicolumn{5}{l}{\emph{Clustered (GID\_0-paymentyear) standard-errors in parentheses}}\\
+   \multicolumn{5}{l}{\emph{Signif. Codes: ***: 0.01, **: 0.05, *: 0.1}}\\
+\end{tabular}
+\end{table}
+\par\endgroup
+
+
+

@@ -1,0 +1,35 @@
+tag: _5year_1995_2015
+sample_year_min: 2005
+sample_year_max: 2015
+capacity_quantile: 0.75
+output_dir: 03_output/rebuild
+admin1:
+  file: panel_aid_admin1_fin_5year_1995_2015.csv
+  unit_id: GID_1
+  aid_var: total_aid_admin1
+  frag_var: frag_index_admin1
+  pop_var: ln_pop_admin1
+  capacity_var: mean_sgq_admin1
+admin2:
+  file: panel_aid_admin2_fin_5year_1995_2015.csv
+  unit_id: GID_2
+  aid_var: total_aid_admin2
+  frag_var: frag_index_admin2
+  pop_var: ln_pop_admin2
+  capacity_var: mean_sgq_admin2
+sector_files:
+  health: panel_aid_admin1_health_5year_1995_2015.csv
+  education: panel_aid_admin1_educ_5year_1995_2015.csv
+  infrastructure: panel_aid_admin1_infra_5year_1995_2015.csv
+  governance_support: panel_aid_admin1_gov_support_5year_1995_2015.csv
+  humanitarian: panel_aid_admin1_humanitarian_5year_1995_2015.csv
+estimands:
+- id: E1
+  label: Admin1 fragmentation effect on annualized nightlights growth.
+  status: confirmatory
+- id: E2
+  label: Admin1 heterogeneity by governance capacity (75th percentile split).
+  status: confirmatory
+- id: E3
+  label: Admin1 sector-specific fragmentation effects with BH-adjusted p-values.
+  status: exploratory

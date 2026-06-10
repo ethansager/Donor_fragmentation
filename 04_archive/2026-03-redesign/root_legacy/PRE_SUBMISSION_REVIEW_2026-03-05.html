@@ -1,0 +1,638 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
+
+<meta charset="utf-8">
+<meta name="generator" content="quarto-1.8.27">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+
+
+<title>pre_submission_review_2026-03-05</title>
+<style>
+code{white-space: pre-wrap;}
+span.smallcaps{font-variant: small-caps;}
+div.columns{display: flex; gap: min(4vw, 1.5em);}
+div.column{flex: auto; overflow-x: auto;}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+ul.task-list{list-style: none;}
+ul.task-list li input[type="checkbox"] {
+  width: 0.8em;
+  margin: 0 0.8em 0.2em -1em; /* quarto-specific, see https://github.com/quarto-dev/quarto-cli/issues/4556 */ 
+  vertical-align: middle;
+}
+</style>
+
+
+<script src="PRE_SUBMISSION_REVIEW_2026-03-05_files/libs/clipboard/clipboard.min.js"></script>
+<script src="PRE_SUBMISSION_REVIEW_2026-03-05_files/libs/quarto-html/quarto.js" type="module"></script>
+<script src="PRE_SUBMISSION_REVIEW_2026-03-05_files/libs/quarto-html/tabsets/tabsets.js" type="module"></script>
+<script src="PRE_SUBMISSION_REVIEW_2026-03-05_files/libs/quarto-html/axe/axe-check.js" type="module"></script>
+<script src="PRE_SUBMISSION_REVIEW_2026-03-05_files/libs/quarto-html/popper.min.js"></script>
+<script src="PRE_SUBMISSION_REVIEW_2026-03-05_files/libs/quarto-html/tippy.umd.min.js"></script>
+<script src="PRE_SUBMISSION_REVIEW_2026-03-05_files/libs/quarto-html/anchor.min.js"></script>
+<link href="PRE_SUBMISSION_REVIEW_2026-03-05_files/libs/quarto-html/tippy.css" rel="stylesheet">
+<link href="PRE_SUBMISSION_REVIEW_2026-03-05_files/libs/quarto-html/quarto-syntax-highlighting-ed96de9b727972fe78a7b5d16c58bf87.css" rel="stylesheet" id="quarto-text-highlighting-styles">
+<script src="PRE_SUBMISSION_REVIEW_2026-03-05_files/libs/bootstrap/bootstrap.min.js"></script>
+<link href="PRE_SUBMISSION_REVIEW_2026-03-05_files/libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
+<link href="PRE_SUBMISSION_REVIEW_2026-03-05_files/libs/bootstrap/bootstrap-256ab1543dedf2f6f04e5c838dd442f2.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
+
+
+</head>
+
+<body class="fullcontent quarto-light">
+
+<div id="quarto-content" class="page-columns page-rows-contents page-layout-article">
+
+<main class="content" id="quarto-document-content">
+
+
+
+
+<section id="pre-submission-review-2026-03-05" class="level1">
+<h1>PRE-SUBMISSION REVIEW — 2026-03-05</h1>
+<section id="paper-competition-or-chaos-donor-fragmentation-and-aid-effectiveness-at-the-sub-national-level" class="level2">
+<h2 class="anchored" data-anchor-id="paper-competition-or-chaos-donor-fragmentation-and-aid-effectiveness-at-the-sub-national-level">Paper: Competition or Chaos? Donor Fragmentation and Aid Effectiveness at the Sub-National Level</h2>
+</section>
+<section id="target-journal-journal-of-development-economics" class="level2">
+<h2 class="anchored" data-anchor-id="target-journal-journal-of-development-economics">Target journal: Journal of Development Economics</h2>
+<hr>
+</section>
+<section id="triage-critical-issues-must-fix-before-submission" class="level2">
+<h2 class="anchored" data-anchor-id="triage-critical-issues-must-fix-before-submission">TRIAGE — Critical issues (must fix before submission)</h2>
+<p><strong>C1 — Table 1 column mismatch: code renders 3 columns, saved <code>.tex</code> has 4</strong> The <code>tbl-main</code> chunk passes <code>m_ols, m_fe, m_2sls</code> (three models), but <code>main_nl_admin1.tex</code> on disk shows four columns (OLS / Country FE / CFA / 2SLS). The saved file is stale. When the paper is compiled, Table 1 will have three columns; if the saved <code>.tex</code> is used directly, readers see four. Decision needed: add <code>m_cfa</code> back to the chunk and update headers/prose, or confirm the three-column structure is canonical and regenerate the saved file. <em>(Agents 2, 5)</em></p>
+<p><strong>C2 — Country-FE coefficient has a significance star but prose says it “spans zero”</strong> <code>main_nl_admin1.tex</code> shows Country FE fragmentation = −3.062* (significant at 10%). The current prose says “The OLS and country-FE estimates are imprecisely estimated with confidence intervals that include zero.” Only the OLS (−3.577, no star) is actually imprecise. Fix: “The OLS estimate is imprecise (confidence interval includes zero); the country-FE estimate is marginally significant at the 10% level (−3.062*).” <em>(Agent 2)</em></p>
+<p><strong>C3 — Missing bib entry for <code>@borusyak_quasi-experimental_2022</code></strong> This citation (line 662) will produce an undefined-reference error at compile time. The entry is absent from <code>references.bib</code>. Add it immediately. <em>(Agent 2)</em></p>
+<p><strong>C4 — Heterogeneity sign anomaly inadequately addressed</strong> H1 predicts fragmentation harms low-capacity regions more. Table 2 (het_nl_admin1.tex) shows the opposite: High-capacity CFA = −4.81**, Low-capacity CFA = −2.42 (n.s.). The prose now acknowledges the subgroup contrast is “not statistically distinguishable” but frames this as directional support for H1. A referee will flag this as a major problem. The paper needs a frank theoretical explanation for why high-capacity regions show the larger significant coefficient — or it must reframe H1 and refocus the contribution. See Referee Question Q1. <em>(Agents 2, 6)</em></p>
+<p><strong>C5 — CFA residual ~10⁻¹⁰: unit mismatch requires formal resolution</strong> The CFA residual coefficient is of order 10⁻¹⁰ because Stage 1 is in USD levels while Stage 2 uses log-percent growth. The paper acknowledges this and notes γ is “not interpreted substantively,” but the referee correctly flags this as insufficient for a JDE submission. Required: either (a) rescale the first stage to millions of USD or log-aid, so the CFA residual is interpretable as a Wu-Hausman test of endogeneity; or (b) formally report a Wu-Hausman statistic and discuss what the near-zero test implies (aid volume is conditionally exogenous, weakening the IV motivation). <em>(Agents 4, 6)</em></p>
+<p><strong>C6 — Reduced-form causal chain description is incorrect</strong> Appendix A (line 834) describes the reduced-form pathway as “donor fractionalization → aid volume → fragmentation → growth.” This is wrong: the IV instruments aid volume, not fragmentation. Fragmentation is a conditioning covariate, not a mediator. The correct chain is: “donor fractionalization → total aid volume → nightlights growth (with fragmentation conditioning the second-stage regression).” Fix this sentence immediately — it misrepresents the design. <em>(Agents 3, 4)</em></p>
+<p><strong>C7 — All table dependent-variable headers will render as raw R variable names</strong> <code>etable()</code> does not rename the “Dependent Variable:” header row via <code>dict</code>; only regressor row labels are renamed. All tables will show <code>nl_growth</code>, <code>u5m</code>, and <code>total_aid_raw</code> in the dependent variable row. Fix: add <code>depvar.labels = c(...)</code> to every <code>etable()</code> call:</p>
+<ul>
+<li>Tables 1–3, B1–B2: <code>depvar.labels = "$\\Delta$ NL Growth"</code></li>
+<li>Table 4: <code>depvar.labels = c("Under-5 Mortality", ...)</code></li>
+<li>Table A1: <code>depvar.labels = c("Total Aid (USD)", "$\\Delta$ NL Growth", "$\\Delta$ NL Growth (Pre-Period)")</code> <em>(Agent 5)</em></li>
+</ul>
+<p><strong>C8 — IV diagnostics insufficient relative to shift-share standards</strong> Appendix A contains only first-stage, reduced-form, and pre-trend placebo. Missing: (a) a test for correlation between baseline exposure shares and pre-period growth trends (Goldsmith-Pinkham overidentification); (b) a Rotemberg-weight concentration diagnostic showing which donors drive the identifying variation; (c) a check that main results survive controlling for aid composition (bilateral/multilateral share, budget support share). Without these, the exclusion restriction defense is not credible at a top field journal. <em>(Agent 6)</em></p>
+<p><strong>C9 — Abstract overstates heterogeneity finding</strong> Abstract says “This negative association is attenuated in regions with stronger subnational governance capacity.” The body (correctly) shows the high-capacity coefficient is larger and significant, the low-capacity coefficient is smaller and insignificant, and the subgroup difference is statistically indistinguishable. The abstract should read: “The negative association is no larger — and may be smaller — in regions with stronger governance capacity, consistent with a capacity-moderation hypothesis, though the subgroup contrast is not statistically significant at conventional levels.” <em>(Agents 1, 2)</em></p>
+<hr>
+</section>
+<section id="major-issues-fix-before-submission" class="level2">
+<h2 class="anchored" data-anchor-id="major-issues-fix-before-submission">MAJOR issues (fix before submission)</h2>
+<p><strong>M1 — Table 2 column mismatch: code renders Admin2 FE, saved <code>.tex</code> has Admin1 2SLS</strong> <code>het_nl_admin1.tex</code> shows columns labeled “High Cap (2SLS) / Low Cap (2SLS)” for columns 3–4. The current chunk passes <code>hi_a2_fe, lo_a2_fe</code> (Admin2 country FE). The saved file is stale. Regenerate. <em>(Agent 5)</em></p>
+<p><strong>M2 — Table 3 “similar magnitude” claim is factually incorrect</strong> Prose (line 724): “negative coefficients on fragmentation of similar sign and magnitude.” <code>robust_stacked_window.tex</code>: Long-Diff = −3.058*, Stacked = −1.050 (n.s.). The stacked estimate is one-third the size. Remove “similar magnitude”; note the attenuation and discuss what drives it (see Referee Q6). <em>(Agent 2)</em></p>
+<p><strong>M3 — Table 4 column count mismatch: code has 5 columns, saved <code>.tex</code> has 4</strong> <code>main_u5m_admin1.tex</code> shows OLS / Country FE / CFA / 2SLS (four columns). The <code>tbl-u5m</code> chunk passes five models including the capacity split. The saved file is stale. Regenerate. <em>(Agent 5)</em></p>
+<p><strong>M4 — Stacked FE vs.&nbsp;long-difference magnitude discrepancy (~3×) unaddressed</strong> The primary (long-diff) estimate is −3.058*; the stacked panel-FE is −1.050 (n.s.). This three-fold gap is large and goes unexplained. The paper presents the stacked estimate as robustness, but a referee will ask whether the stacked estimate is the more credible one (more FE, more variation). Either discuss the decomposition of this gap or promote the stacked estimate to co-primary. <em>(Agent 6)</em></p>
+<p><strong>M5 — SGQ endogeneity caveat confined to Data section</strong> The caveat that “governance quality may itself be partly shaped by historical aid patterns” appears only at line 632. It is absent from the Table 2 discussion and the Conclusion where it is most needed. Repeat it in both locations. Consider restricting the SGQ split to pre-period (pre-2005) SGQ values as a robustness check. <em>(Agent 3)</em></p>
+<p><strong>M6 — Aid-quality exclusion restriction threat not addressed</strong> The paper defends against trade-policy and diplomatic channels, but not against the concern that fractionalized donor governments change <em>aid type</em> (project vs.&nbsp;budget support, tied vs.&nbsp;untied, sectoral composition) independently of total volume. This is an exclusion restriction violation that the pre-trend placebo does not test. Acknowledge explicitly and ideally provide a robustness check controlling for aid composition. <em>(Agents 3, 6)</em></p>
+<p><strong>M7 — SUTVA dismissal without evidence</strong> Line 662 dismisses spillover concerns by noting “administrative units are large enough that within-country spillovers are unlikely to dominate.” This is an assertion without evidence. Add either Conley standard errors or a spatial-lag test to Appendix B, or honestly acknowledge this as a limitation. <em>(Agent 3)</em></p>
+<p><strong>M8 — IV quantitative magnitude stated without confidence interval</strong> Line 680: “reduces annualized nightlights growth by approximately 0.4 percentage points per year.” Report the 95% CI around this estimate. Given ~40 clusters, the effective degrees of freedom are limited. <em>(Agent 3)</em></p>
+<p><strong>M9 — Multiple comparisons not acknowledged</strong> The paper tests ~20–25 fragmentation coefficients across tables and Figure 1. No multiple-comparisons caveat exists. Add one sentence in the empirical strategy: “We do not apply multiple-testing corrections; estimates in the sector analysis and robustness tables should be interpreted as exploratory.” <em>(Agent 3)</em></p>
+<p><strong>M10 — Stage 1 CFA equation: <code>Aid_{it}</code> vs <code>Aid_{i,t-1}</code> subscript inconsistency</strong> The Stage 1 equation uses <code>Aid_{it}</code> (current period) on the left, but Stage 2 uses <code>ln(Aid_{i,t-1})</code> (lagged). In the long-difference setup, <code>total_aid_raw</code> is already the lagged value; both equations should use consistent <code>t-1</code> subscripts. Fix Stage 1 LHS to <code>Aid_{i,t-1}</code> and note the subscript convention. <em>(Agent 4)</em></p>
+<p><strong>M11 — IV formula defines <code>IV_{it}</code> but uses the lag <code>IV_{i,t-1}</code></strong> Line 658 defines the instrument as <code>IV_{it}</code>, then line 660 says “We use the lag of this instrument, IV*{i,t-1}.” Better to define the formula with the t−1 subscript directly: <code>IV*{i,t-1} = Σ*j p̄*{ji} · Frac\_{j,t-1}</code>. <em>(Agent 4)</em></p>
+<p><strong>M12 — CFA Stage 2 residual subscript: <code>η̂_{it}</code> should be <code>η̂_{i,t-1}</code></strong> The residual is generated from a Stage 1 regression of <code>t-1</code> variables; write it as <code>η̂_{i,t-1}</code> in Stage 2 for notational consistency. <em>(Agent 4)</em></p>
+<p><strong>M13 — <code>N</code> in HHI summation never defined symbolically</strong> Line 615: <code>HHI_{it} = Σ_{j=1}^{N} π_{jit}²</code>. The upper bound <code>N</code> is never defined. Add “where <code>N_{it}</code> is the number of active donors in unit <code>i</code> period <code>t</code>.” Also note the symbol <code>π_{jit}</code> should be defined before or simultaneously with the equation. <em>(Agent 4)</em></p>
+<p><strong>M14 — Table A1: <code>fitstat = "ivf"</code> silently produces blank rows</strong> <code>ivf</code> is a 2SLS statistic; it does not apply to the standalone OLS <code>first_stage</code> feols object. The F-stat row will be blank. Fix: use <code>fitstat = c("n", "r2", "f")</code> for the OLS first-stage, or add <code>extralines</code> to manually insert the F-stat from <code>fs_fstat_val</code>. Also note in the table caption that the F-statistic cited in prose (104.8) comes from the 2SLS model in Table 1. <em>(Agents 4, 5)</em></p>
+<p><strong>M15 — All tables missing sample definition, time period, unit of observation in notes</strong> No table note specifies: Sub-Saharan Africa, 2005–2015, Admin1 provinces (or Admin2 districts), or number of countries. JDE requires this. Add “Sample: Sub-Saharan African provinces (Admin1), 2005–2015. Unit of observation: administrative region.” to every table note (adapt for Admin2 tables). <em>(Agent 5)</em></p>
+<p><strong>M16 — Table B2: alternative fragmentation measures not defined in table notes</strong> “Tail Share” (fraction outside top three donors) and “Small Donors” (count with &lt;10% share) are not defined in the table. Add definitions to the notes. <em>(Agent 5)</em></p>
+<p><strong>M17 — Figure 1 missing <code>#| label: fig-sector</code> chunk option</strong> The chunk is named <code>{r fig-sector}</code> but has no <code>#| label: fig-sector</code> option inside the chunk. For Quarto cross-reference machinery, add <code>#| label: fig-sector</code> as the first option line. Also add <code>#| fig-alt:</code> for accessibility. <em>(Agent 5)</em></p>
+<p><strong>M18 — Sample composition of SGQ split not documented</strong> 107 high-capacity vs.&nbsp;422 low-capacity observations is a ~1:4 ratio, far from the expected 1:3 for a 75th-percentile split. This implies uneven Afrobarometer coverage or interpolation. Add a data appendix or inline note documenting: (a) fraction of SGQ values observed vs.&nbsp;imputed; (b) distribution across countries; (c) whether attrition is systematic. <em>(Agent 6)</em></p>
+<p><strong>M19 — U5M 2SLS sign is negative (wrong sign vs.&nbsp;narrative); needs acknowledgment</strong> Table <code>main_u5m_admin1.tex</code> shows the 2SLS U5M coefficient is negative (opposite to the stated positive direction). The prose does not acknowledge this. Either report the 2SLS U5M results explicitly and discuss the sign reversal, or remove the 2SLS U5M specification from the paper. <em>(Agent 6)</em></p>
+<hr>
+</section>
+<section id="minor-issues-fix-if-time-permits" class="level2">
+<h2 class="anchored" data-anchor-id="minor-issues-fix-if-time-permits">MINOR issues (fix if time permits)</h2>
+<p><strong>mn1</strong> — Abstract opener (“National policies and institutional quality have long been recognized…”) is a throat-clearing truism. Replace with a direct statement of the paper’s question and finding. <em>(Agent 1 #1–2)</em></p>
+<p><strong>mn2</strong> — Abstract: “underscore,” “critically” — hedging intensifiers. Remove. <em>(Agent 1 #3)</em></p>
+<p><strong>mn3</strong> — Line 526: “This pattern — where fragmentation sometimes hinders, yet occasionally boosts development — poses a clear puzzle: why does fragmentation stifle economic growth in some contexts, while boosting it in others?” — Tautological. Delete the parenthetical and start with the question. <em>(Agent 1 #6)</em></p>
+<p><strong>mn4</strong> — Line 526: “transform fragmentation from a liability into a more manageable challenge” — vague. Replace with “attenuate fragmentation’s negative effects on growth.” <em>(Agent 1 #7)</em></p>
+<p><strong>mn5</strong> — Line 536: “administrative burden can overburden” — “burden/overburden” tautology. Change to “This load can overwhelm public officials.” <em>(Agent 1 #12)</em></p>
+<p><strong>mn6</strong> — Line 536: “siphon off the most skilled local staff” and “creating a ‘brain drain’ that diverts skilled officials” — same idea stated twice in consecutive sentences. Remove the first occurrence. <em>(Agent 1 #13)</em></p>
+<p><strong>mn7</strong> — Line 538: “Other work demonstrates the impact of a lack of coordination on recipients.” — Throat-clearing opener. Delete; begin with “When donors fail to coordinate…” <em>(Agent 1 #14)</em></p>
+<p><strong>mn8</strong> — Line 540: “Weaker programs…resulting in weaker governance structures” — “weaker” used twice for different referents. Revise: “skew donor behavior toward quick-disbursement projects rather than institution building, eroding governance quality.” <em>(Agent 1 #18)</em></p>
+<p><strong>mn9</strong> — Line 546: “The idea is that…” — throat-clearing. Delete; start with “Under certain conditions…” <em>(Agent 1 #19)</em></p>
+<p><strong>mn10</strong> — Line 548: “despite the best of intentions” — cliché. Replace with “despite repeated commitments.” <em>(Agent 1 #22)</em></p>
+<p><strong>mn11</strong> — Line 548: “interests and priorities…are precisely what hampers” — subject-verb agreement error; should be “hamper.” <em>(Agent 1 #23)</em></p>
+<p><strong>mn12</strong> — Line 550: “underscore how” — style violation. Replace “underscore how” with “show how” or “reveal how.” <em>(Agent 1 #24)</em></p>
+<p><strong>mn13</strong> — Line 552: “(fail to)” — informal parenthetical. Replace with “whether donors coordinate.” <em>(Agent 1 #25)</em></p>
+<p><strong>mn14</strong> — Line 556: “potential drawbacks…potential benefits” — “potential” appears twice. Drop the first: “mitigating the drawbacks of fragmentation while harnessing its potential benefits.” <em>(Agent 1 #27)</em></p>
+<p><strong>mn15</strong> — Line 556: “parlay” — colloquialism. Replace with “convert” or “translate.” <em>(Agent 1 #28)</em></p>
+<p><strong>mn16</strong> — Line 558: “leverage donor competition” — business jargon. Replace with “exploit donor competition.” <em>(Agent 1 #29)</em></p>
+<p><strong>mn17</strong> — Line 558: “local government capacity is pivotal” — vague intensifier; sentence restates topic sentence. Delete it. <em>(Agent 1 #30)</em></p>
+<p><strong>mn18</strong> — Line 574: “The capacity argument above says <em>who</em>” — informal. Replace with “The argument above identifies <em>who</em> bears fragmentation costs most heavily.” <em>(Agent 1 #35)</em></p>
+<p><strong>mn19</strong> — Line 577: “budget cycles” / “budgeting cycles” (line 536) — inconsistent. Standardize to “budget cycles.” <em>(Agent 1 #36)</em></p>
+<p><strong>mn20</strong> — Line 579: “SSA” used without prior definition. Spell out “Sub-Saharan Africa” or define the abbreviation on first use. <em>(Agent 1 #37)</em></p>
+<p><strong>mn21</strong> — Line 583 (H2): “portfolio-level coordination costs accumulate at the administrative tier responsible for integrating the full donor portfolio” — “portfolio” twice. Revise: “coordination costs accumulate at the administrative tier responsible for integrating all active donors simultaneously.” <em>(Agent 1 #39)</em></p>
+<p><strong>mn22</strong> — Line 589: “most legible when examined against” — unusual phrasing. Replace with “clearest when illustrated with.” <em>(Agent 1 #40)</em></p>
+<p><strong>mn23</strong> — Line 589: “cleanly separates” — informal. Use “formally separates.” <em>(Agent 1 #41)</em></p>
+<p><strong>mn24</strong> — Line 592: “attenuates below it” — intransitive use of “attenuate” is jargon. Revise: “peaks at the district and diminishes below it.” <em>(Agent 1 #44)</em></p>
+<p><strong>mn25</strong> — Line 597: “impacted by” — bureaucratic jargon. Replace with “associated with” or “shaped by.” <em>(Agent 1 #45)</em></p>
+<p><strong>mn26</strong> — Line 597: “sub-Saharan Africa” (lowercase ‘s’) — inconsistent. Standardize to “Sub-Saharan Africa.” <em>(Agents 1, 2)</em></p>
+<p><strong>mn27</strong> — Line 602: “We believe that” — weak epistemic hedge. Replace with “Aggregation to regional units mitigates rural measurement error; we treat mean nightlights as a reasonable proxy for regional economic trends.” <em>(Agent 1 #47)</em></p>
+<p><strong>mn28</strong> — Line 602: “the seminal paper by <span class="citation" data-cites="henderson_measuring_2012">@henderson_measuring_2012</span>” — “seminal” is a promotional intensifier. Remove: “following <span class="citation" data-cites="henderson_measuring_2012">@henderson_measuring_2012</span>.” <em>(Agent 1 #48)</em></p>
+<p><strong>mn29</strong> — Line 604: “NTL” abbreviation introduced and never used again. Drop the abbreviation; just say “nightlights.” <em>(Agent 1 #49)</em></p>
+<p><strong>mn30</strong> — Line 621: “less than 10% share” — countable noun: “fewer than” preferred, or rephrase to “shares below 10%.” <em>(Agent 1 #50)</em></p>
+<p><strong>mn31</strong> — Line 621: missing comma after “For each year–admin unit pair”. Fix: “For each year–admin-unit pair, we calculate…” <em>(Agent 1 #51)</em></p>
+<p><strong>mn32</strong> — Line 624: “Following <span class="citation" data-cites="iddawela_quality_2021">@iddawela_quality_2021</span> closely” — “closely” weakens attribution. Change to “Following the procedure of <span class="citation" data-cites="iddawela_quality_2021">@iddawela_quality_2021</span>.” <em>(Agent 1 #52)</em></p>
+<p><strong>mn33</strong> — Line 630: “a better indicator of actual government functioning” — “indicator” appears twice in the same clause. Revise: “we hypothesize that the perception-based SGQ better captures actual government functioning.” <em>(Agent 1 #54)</em></p>
+<p><strong>mn34</strong> — Line 632: “carried forward/backward” — slash is informal. Use “extrapolated at the panel boundaries.” <em>(Agent 1 #55)</em></p>
+<p><strong>mn35</strong> — Line 635: “Following the recent literature, we rely on fixed effects to absorb additional unobserved heterogeneity.” — “recent literature” is vague appeal to authority. Specify: “We include country fixed effects to absorb time-invariant national-level confounders.” <em>(Agent 1 #56)</em></p>
+<p><strong>mn36</strong> — Line 638: Semicolon joins a definitional clause to a sample statistic — use a period instead. <em>(Agent 1 #57)</em></p>
+<p><strong>mn37</strong> — Line 646: “establishes the raw conditional correlation” — OLS doesn’t “establish” anything causal. Replace with “reports the raw conditional correlation.” <em>(Agent 1 #58)</em></p>
+<p><strong>mn38</strong> — Line 650: “which controls” — subject-verb agreement error with plural subject “Country fixed effects.” Fix to “which control.” Also “country dummies” → “country fixed effects.” <em>(Agent 1 #59)</em></p>
+<p><strong>mn39</strong> — Line 660: “fixed across time” — redundant (the share is time-invariant by construction). Delete. <em>(Agent 1 #60)</em></p>
+<p><strong>mn40</strong> — Line 662: “readers should interpret IV results with this in mind” — throat-clearing. Replace with “the Borusyak et al.&nbsp;critique therefore applies in principle.” <em>(Agent 1 #61)</em></p>
+<p><strong>mn41</strong> — Line 672: “One technical note:” — throat-clearing opener. Integrate the sentence directly into the paragraph. <em>(Agent 1 #62)</em></p>
+<p><strong>mn42</strong> — Lines 674, 680, 701: “admin1”/“admin2” lowercase — inconsistent with “Admin1”/“Admin2” used elsewhere. Standardize to capitalized forms throughout all prose and table notes. <em>(Agent 1 #63–64, #67)</em></p>
+<p><strong>mn43</strong> — Line 680: “imprecisely estimated with confidence intervals that include zero” — previous version said “standard errors that span zero” which was incorrect. Current version is fixed but verify. <em>(Agent 1 #65)</em></p>
+<p><strong>mn44</strong> — Line 680: “consistent with attenuation bias from measurement error in aid volumes” — present this as one possible interpretation, not settled: add “though other explanations for the IV-OLS gap cannot be ruled out.” <em>(Agent 1 #66)</em></p>
+<p><strong>mn45</strong> — Line 701: “the contrast between subgroups is not as sharp as the theory might predict; the difference in coefficients is not statistically distinguishable across subgroups” — redundant; the two clauses say the same thing. Keep one. <em>(Agent 1 #68)</em></p>
+<p><strong>mn46</strong> — Line 722: “The results are sharp” — informal intensifier. Change to “The results are unambiguous” or “The pattern is clear.” <em>(Agent 1 #69)</em></p>
+<p><strong>mn47</strong> — Line 755: “measuring a direct welfare dimension of aid effectiveness” — vague. Replace with “capturing a direct welfare consequence of aid delivery.” <em>(Agent 1 #71)</em></p>
+<p><strong>mn48</strong> — Line 755: “though readers should note” — throat-clearing. Delete; say “though several estimates are not statistically significant.” <em>(Agent 1 #72)</em></p>
+<p><strong>mn49</strong> — Line 776: “bandwidth-intensive” — computer-science jargon. Replace with “coordination-intensive” (used elsewhere in the paper) or “administratively demanding.” <em>(Agent 1 #73)</em></p>
+<p><strong>mn50</strong> — Line 776: “less ministerial coordination required” — dangling participial phrase. Rewrite: “lower coordination demands on line ministries.” <em>(Agent 1 #74)</em></p>
+<p><strong>mn51</strong> — Line 776: “donors respond to crises in fragmented ways” — ambiguous. Replace with “crisis regions attract many donors, confounding the fragmentation-growth relationship.” <em>(Agent 1 #75)</em></p>
+<p><strong>mn52</strong> — Line 816 (Conclusion opener): “This paper examines why…” — weak opener. Lead with the finding. <em>(Agent 1 #76)</em></p>
+<p><strong>mn53</strong> — Line 816: “more frequently succumbing to duplication” — informal. Revise: “suffer the familiar costs: duplication, gaps in coverage, and a bias toward short-term disbursements.” <em>(Agent 1 #77)</em></p>
+<p><strong>mn54</strong> — Line 820: “arguably the paper’s sharpest empirical contribution” — if true, drop “arguably.” <em>(Agent 1 #79)</em></p>
+<p><strong>mn55</strong> — Line 834 (Appendix A): “which would be required for a violation” — inverted logic. Rephrase: “which would indicate a violation of the exclusion restriction through pre-existing growth trends.” <em>(Agent 1 #80)</em></p>
+<p><strong>mn56</strong> — Line 878: “top 3” — numeral inconsistency; the Data section uses “top three.” Fix to “top three.” <em>(Agent 1 #81)</em></p>
+<p><strong>mn57</strong> — Line 878: “specific aggregation of the donor distribution” — imprecise. Replace with “how fragmentation is operationalized.” <em>(Agent 1 #82)</em></p>
+<p><strong>mn58</strong> — Line 899: “broadly consistent” — weak hedge if pattern truly holds. If it holds, say “consistent.” <em>(Agent 1 #83)</em></p>
+<p><strong>mn59</strong> — Terminology: “Bartik IV” vs.&nbsp;“shift-share IV” vs.&nbsp;“Bartik shift-share IV” used interchangeably throughout. Choose one canonical term (recommend “shift-share IV”) and use it consistently. DICT uses “Bartik IV” — update if switching. <em>(Agent 2)</em></p>
+<p><strong>mn60</strong> — Table B2, Column (1) header: <code>m_fe</code> is used as the “Full” reference, but all other robustness tables use <code>m_cfa</code> for comparison. Label column (1) as “(1) Full (FE)” to prevent confusion. <em>(Agent 5)</em></p>
+<p><strong>mn61</strong> — All tables: add unit of observation and number of countries to notes (JDE standard). <em>(Agent 5)</em></p>
+<p><strong>mn62</strong> — DMSP-OLS and VIIRS acronyms introduced (line 604) without expansion. Define on first use: “Defense Meteorological Satellite Program Operational Linescan System (DMSP-OLS)” and “Visible Infrared Imaging Radiometer Suite (VIIRS).” <em>(Agent 1 #90)</em></p>
+<p><strong>mn63</strong> — “SWAp” in block quotation (line 544) not defined for the reader. Add a parenthetical before the quote: “(SWAp = Sector-Wide Approach).” <em>(Agent 1 #91)</em></p>
+<p><strong>mn64</strong> — “DAC” (line 548) not expanded on first use. Write “OECD Development Assistance Committee (DAC)” on first occurrence. <em>(Agent 1 #92)</em></p>
+<p><strong>mn65</strong> — Line 3 (Malawi theory section): Agent 3 notes the Malawi case study risks circular reasoning — it documents institutional preconditions for H2 but is framed as if it confirms H2. Add: “Malawi’s governance architecture illustrates the institutional preconditions under which H2’s logic applies; whether the predicted empirical pattern holds in Malawi specifically is not separately tested.” <em>(Agent 3)</em></p>
+<p><strong>mn66</strong> — Line 701 (CFA bias direction): “unmeasured selection…may attenuate the low-capacity estimate” — asymmetrically applied. Selection could bias either estimate in either direction. Replace with: “Selection into high-fragmentation environments may bias either estimate in either direction; we cannot sign the bias with confidence.” <em>(Agent 3)</em></p>
+<p><strong>mn67</strong> — Conclusion line 822: “further triangulate the welfare interpretation” — “triangulate” implies independent corroboration. Most U5M estimates are insignificant. Change to “are directionally consistent with.” <em>(Agent 3)</em></p>
+<p><strong>mn68</strong> — Line 548: “Starting with the DAC’s ‘Shaping the 21st Century’ in 1996…policy documents continually emphasize…continuing with subsequent” — “continually” and “continuing” in the same sentence. Revise: “Since the DAC’s 1996 <em>Shaping the 21st Century</em> and continuing through subsequent high-level forums, policy documents have repeatedly called for…” <em>(Agent 1 #21)</em></p>
+<hr>
+</section>
+<section id="agent-reports-full-detail" class="level2">
+<h2 class="anchored" data-anchor-id="agent-reports-full-detail">AGENT REPORTS (full detail)</h2>
+<section id="agent-1-copy-editor" class="level3">
+<h3 class="anchored" data-anchor-id="agent-1-copy-editor">Agent 1 — Copy Editor</h3>
+<p>See numbered list above (97 issues), organized by paper section. Key highest-priority copy issues:</p>
+<ul>
+<li>Abstract opener (#1–3): throat-clearing, redundancy, hedging intensifiers</li>
+<li>Line 523–24 (#4–10): intro phrasing, “robust,” “establishes”</li>
+<li>Theory (#11–44): “overburden,” “brain drain” duplication, “underscore,” “(fail to)”, “parlay,” “leverage,” “pivotal,” “SSA” undefined</li>
+<li>Data/Methods (#45–63): “impacted by,” “sub-Saharan,” “we believe,” “seminal,” “NTL,” “less than” vs.&nbsp;“fewer than”</li>
+<li>Results (#64–75): Admin1/admin1 inconsistency, “sharp,” “bandwidth-intensive,” dangling phrase</li>
+<li>Conclusion (#76–79): weak opener, informal phrasing, “arguably”</li>
+<li>Appendix (#80–83): inverted logic on placebo, “top 3” vs.&nbsp;“top three,” “aggregation”</li>
+<li>Typographic (#84–97): Admin1 capitalization, Sub-Saharan capitalization, British spellings in quotes, DMSP/VIIRS not expanded, SWAp undefined, DAC not expanded</li>
+</ul>
+</section>
+<section id="agent-2-consistency-checker" class="level3">
+<h3 class="anchored" data-anchor-id="agent-2-consistency-checker">Agent 2 — Consistency Checker</h3>
+<p>13 issues found (see above). Critical: Table 1 column mismatch (C1), Country-FE significance (C2), missing bib entry (C3), heterogeneity direction (C4), U5M direction (M19). Major: Tables 2–4 stale <code>.tex</code> artifacts, stacked magnitude discrepancy (M2), abstract overstatement (C9). Minor: “Bartik IV” vs.&nbsp;“shift-share IV” terminology drift (mn59), figure caption “OLS estimates with country FE” is self-contradictory.</p>
+</section>
+<section id="agent-3-claims-identification-auditor" class="level3">
+<h3 class="anchored" data-anchor-id="agent-3-claims-identification-auditor">Agent 3 — Claims &amp; Identification Auditor</h3>
+<p>19 issues found (see above). Critical: reduced-form causal chain (C6), conclusion asserts mechanism causally (must hedge). High: SGQ endogeneity absent from Results/Conclusion (M5), aid-quality exclusion restriction threat (M6), SUTVA dismissal without evidence (M7), IV magnitude without CI (M8). Medium: H1/H2 use “effect” for unidentified parameters, multiple comparisons (M9), asymmetric bias direction in CFA caveat (mn66), sector conclusions use weakest identification, Malawi framing risks circularity (mn65). Lower: placebo scope overstated, “triangulate” for insignificant U5M (mn67).</p>
+</section>
+<section id="agent-4-mathematics-econometrics-reviewer" class="level3">
+<h3 class="anchored" data-anchor-id="agent-4-mathematics-econometrics-reviewer">Agent 4 — Mathematics &amp; Econometrics Reviewer</h3>
+<p>14 issues found (see above). Critical: Aid subscript inconsistency Stage 1 vs.&nbsp;Stage 2 (M10), IV lag subscript (M11), CFA Stage 2 residual subscript (M12). High: undefined N in HHI (M13), long-difference subscript convention (footnote needed). Medium: HHI π_{jit} defined after equation, fragmentation range claim slightly imprecise. Lower: IV share baseline overlap with panel (prose clarification needed), NL growth convergence-control interpretation (add remark).</p>
+</section>
+<section id="agent-5-tables-figures-auditor" class="level3">
+<h3 class="anchored" data-anchor-id="agent-5-tables-figures-auditor">Agent 5 — Tables &amp; Figures Auditor</h3>
+<p>33 deficiencies found (see above). Critical: dependent variable headers render as raw variable names in all tables (C7). Major: Table 1 CFA column omission (C1), Tables 2–4 stale saved <code>.tex</code> artifacts (M1, M3), <code>fitstat = "ivf"</code> silently blank for OLS first-stage (M14), Figure 1 missing <code>#| label:</code> (M17), all tables missing sample definition (M15), Table B2 measures undefined (M16). Minor: Table B3 Column 1 label missing “FE” (mn60), <code>etable()</code> labels use underscores (hyphens preferred), Figure 1 missing <code>#| fig-alt:</code>, empty-figure fallback missing.</p>
+</section>
+<section id="agent-6-referee-report-jde" class="level3">
+<h3 class="anchored" data-anchor-id="agent-6-referee-report-jde">Agent 6 — Referee Report (JDE)</h3>
+<p><strong>Verdict: Major Revision</strong></p>
+<p><strong>Summary:</strong> The paper examines whether donor fragmentation in Sub-Saharan Africa harms subnational development outcomes, using a Bartik shift-share IV for total aid volume and the Admin1/Admin2 spatial contrast as a mechanistic test. The central finding is a negative association between Admin1 fragmentation and nightlights growth, concentrated in high-capacity regions (sign anomaly vs.&nbsp;H1) and absent at Admin2.</p>
+<p><strong>Contribution assessment:</strong> The Admin1/Admin2 mechanistic test is the paper’s most distinctive move and is intellectually coherent. The GODAD-based two-level fragmentation panel is a genuine data contribution. However, the sign anomaly in the heterogeneity results (high-capacity regions show the larger, more significant negative coefficient, the opposite of H1) is a major presentational and interpretive problem that must be addressed head-on.</p>
+<p><strong>Required revisions (6):</strong></p>
+<ol type="1">
+<li>The H1 sign anomaly: frank theoretical explanation required or reframing of the contribution.</li>
+<li>IV diagnostics expansion: Rotemberg/Goldsmith-Pinkham concentration test, shares pre-trend test, aid-composition robustness.</li>
+<li>CFA residual: rescale or provide formal Wu-Hausman test; current ~10⁻¹⁰ coefficient is uninformative.</li>
+<li>SGQ sample composition: document imputation, coverage, attrition.</li>
+<li>U5M results: acknowledge 2SLS sign reversal and insignificance; do not present as confirmatory.</li>
+<li>Long-difference vs.&nbsp;stacked FE gap (~3×): explain or promote stacked to co-primary.</li>
+</ol>
+<p><strong>Suggested analyses (4):</strong></p>
+<ol type="1">
+<li>Rotemberg donor-weight decomposition (standard in shift-share literature post-GPS 2020).</li>
+<li>Continuous <code>Fragmentation × SGQ</code> interaction replacing the capacity split.</li>
+<li>Spatial lag of neighbor fragmentation as SUTVA test.</li>
+<li>Event-study around donor-country political transitions.</li>
+</ol>
+<p><strong>Pointed questions (8):</strong> See full agent report above (Q1–Q8).</p>
+</section>
+</section>
+</section>
+
+</main>
+<!-- /main column -->
+<script id="quarto-html-after-body" type="application/javascript">
+  window.document.addEventListener("DOMContentLoaded", function (event) {
+    const icon = "";
+    const anchorJS = new window.AnchorJS();
+    anchorJS.options = {
+      placement: 'right',
+      icon: icon
+    };
+    anchorJS.add('.anchored');
+    const isCodeAnnotation = (el) => {
+      for (const clz of el.classList) {
+        if (clz.startsWith('code-annotation-')) {                     
+          return true;
+        }
+      }
+      return false;
+    }
+    const onCopySuccess = function(e) {
+      // button target
+      const button = e.trigger;
+      // don't keep focus
+      button.blur();
+      // flash "checked"
+      button.classList.add('code-copy-button-checked');
+      var currentTitle = button.getAttribute("title");
+      button.setAttribute("title", "Copied!");
+      let tooltip;
+      if (window.bootstrap) {
+        button.setAttribute("data-bs-toggle", "tooltip");
+        button.setAttribute("data-bs-placement", "left");
+        button.setAttribute("data-bs-title", "Copied!");
+        tooltip = new bootstrap.Tooltip(button, 
+          { trigger: "manual", 
+            customClass: "code-copy-button-tooltip",
+            offset: [0, -8]});
+        tooltip.show();    
+      }
+      setTimeout(function() {
+        if (tooltip) {
+          tooltip.hide();
+          button.removeAttribute("data-bs-title");
+          button.removeAttribute("data-bs-toggle");
+          button.removeAttribute("data-bs-placement");
+        }
+        button.setAttribute("title", currentTitle);
+        button.classList.remove('code-copy-button-checked');
+      }, 1000);
+      // clear code selection
+      e.clearSelection();
+    }
+    const getTextToCopy = function(trigger) {
+      const outerScaffold = trigger.parentElement.cloneNode(true);
+      const codeEl = outerScaffold.querySelector('code');
+      for (const childEl of codeEl.children) {
+        if (isCodeAnnotation(childEl)) {
+          childEl.remove();
+        }
+      }
+      return codeEl.innerText;
+    }
+    const clipboard = new window.ClipboardJS('.code-copy-button:not([data-in-quarto-modal])', {
+      text: getTextToCopy
+    });
+    clipboard.on('success', onCopySuccess);
+    if (window.document.getElementById('quarto-embedded-source-code-modal')) {
+      const clipboardModal = new window.ClipboardJS('.code-copy-button[data-in-quarto-modal]', {
+        text: getTextToCopy,
+        container: window.document.getElementById('quarto-embedded-source-code-modal')
+      });
+      clipboardModal.on('success', onCopySuccess);
+    }
+      var localhostRegex = new RegExp(/^(?:http|https):\/\/localhost\:?[0-9]*\//);
+      var mailtoRegex = new RegExp(/^mailto:/);
+        var filterRegex = new RegExp('/' + window.location.host + '/');
+      var isInternal = (href) => {
+          return filterRegex.test(href) || localhostRegex.test(href) || mailtoRegex.test(href);
+      }
+      // Inspect non-navigation links and adorn them if external
+     var links = window.document.querySelectorAll('a[href]:not(.nav-link):not(.navbar-brand):not(.toc-action):not(.sidebar-link):not(.sidebar-item-toggle):not(.pagination-link):not(.no-external):not([aria-hidden]):not(.dropdown-item):not(.quarto-navigation-tool):not(.about-link)');
+      for (var i=0; i<links.length; i++) {
+        const link = links[i];
+        if (!isInternal(link.href)) {
+          // undo the damage that might have been done by quarto-nav.js in the case of
+          // links that we want to consider external
+          if (link.dataset.originalHref !== undefined) {
+            link.href = link.dataset.originalHref;
+          }
+        }
+      }
+    function tippyHover(el, contentFn, onTriggerFn, onUntriggerFn) {
+      const config = {
+        allowHTML: true,
+        maxWidth: 500,
+        delay: 100,
+        arrow: false,
+        appendTo: function(el) {
+            return el.parentElement;
+        },
+        interactive: true,
+        interactiveBorder: 10,
+        theme: 'quarto',
+        placement: 'bottom-start',
+      };
+      if (contentFn) {
+        config.content = contentFn;
+      }
+      if (onTriggerFn) {
+        config.onTrigger = onTriggerFn;
+      }
+      if (onUntriggerFn) {
+        config.onUntrigger = onUntriggerFn;
+      }
+      window.tippy(el, config); 
+    }
+    const noterefs = window.document.querySelectorAll('a[role="doc-noteref"]');
+    for (var i=0; i<noterefs.length; i++) {
+      const ref = noterefs[i];
+      tippyHover(ref, function() {
+        // use id or data attribute instead here
+        let href = ref.getAttribute('data-footnote-href') || ref.getAttribute('href');
+        try { href = new URL(href).hash; } catch {}
+        const id = href.replace(/^#\/?/, "");
+        const note = window.document.getElementById(id);
+        if (note) {
+          return note.innerHTML;
+        } else {
+          return "";
+        }
+      });
+    }
+    const xrefs = window.document.querySelectorAll('a.quarto-xref');
+    const processXRef = (id, note) => {
+      // Strip column container classes
+      const stripColumnClz = (el) => {
+        el.classList.remove("page-full", "page-columns");
+        if (el.children) {
+          for (const child of el.children) {
+            stripColumnClz(child);
+          }
+        }
+      }
+      stripColumnClz(note)
+      if (id === null || id.startsWith('sec-')) {
+        // Special case sections, only their first couple elements
+        const container = document.createElement("div");
+        if (note.children && note.children.length > 2) {
+          container.appendChild(note.children[0].cloneNode(true));
+          for (let i = 1; i < note.children.length; i++) {
+            const child = note.children[i];
+            if (child.tagName === "P" && child.innerText === "") {
+              continue;
+            } else {
+              container.appendChild(child.cloneNode(true));
+              break;
+            }
+          }
+          if (window.Quarto?.typesetMath) {
+            window.Quarto.typesetMath(container);
+          }
+          return container.innerHTML
+        } else {
+          if (window.Quarto?.typesetMath) {
+            window.Quarto.typesetMath(note);
+          }
+          return note.innerHTML;
+        }
+      } else {
+        // Remove any anchor links if they are present
+        const anchorLink = note.querySelector('a.anchorjs-link');
+        if (anchorLink) {
+          anchorLink.remove();
+        }
+        if (window.Quarto?.typesetMath) {
+          window.Quarto.typesetMath(note);
+        }
+        if (note.classList.contains("callout")) {
+          return note.outerHTML;
+        } else {
+          return note.innerHTML;
+        }
+      }
+    }
+    for (var i=0; i<xrefs.length; i++) {
+      const xref = xrefs[i];
+      tippyHover(xref, undefined, function(instance) {
+        instance.disable();
+        let url = xref.getAttribute('href');
+        let hash = undefined; 
+        if (url.startsWith('#')) {
+          hash = url;
+        } else {
+          try { hash = new URL(url).hash; } catch {}
+        }
+        if (hash) {
+          const id = hash.replace(/^#\/?/, "");
+          const note = window.document.getElementById(id);
+          if (note !== null) {
+            try {
+              const html = processXRef(id, note.cloneNode(true));
+              instance.setContent(html);
+            } finally {
+              instance.enable();
+              instance.show();
+            }
+          } else {
+            // See if we can fetch this
+            fetch(url.split('#')[0])
+            .then(res => res.text())
+            .then(html => {
+              const parser = new DOMParser();
+              const htmlDoc = parser.parseFromString(html, "text/html");
+              const note = htmlDoc.getElementById(id);
+              if (note !== null) {
+                const html = processXRef(id, note);
+                instance.setContent(html);
+              } 
+            }).finally(() => {
+              instance.enable();
+              instance.show();
+            });
+          }
+        } else {
+          // See if we can fetch a full url (with no hash to target)
+          // This is a special case and we should probably do some content thinning / targeting
+          fetch(url)
+          .then(res => res.text())
+          .then(html => {
+            const parser = new DOMParser();
+            const htmlDoc = parser.parseFromString(html, "text/html");
+            const note = htmlDoc.querySelector('main.content');
+            if (note !== null) {
+              // This should only happen for chapter cross references
+              // (since there is no id in the URL)
+              // remove the first header
+              if (note.children.length > 0 && note.children[0].tagName === "HEADER") {
+                note.children[0].remove();
+              }
+              const html = processXRef(null, note);
+              instance.setContent(html);
+            } 
+          }).finally(() => {
+            instance.enable();
+            instance.show();
+          });
+        }
+      }, function(instance) {
+      });
+    }
+        let selectedAnnoteEl;
+        const selectorForAnnotation = ( cell, annotation) => {
+          let cellAttr = 'data-code-cell="' + cell + '"';
+          let lineAttr = 'data-code-annotation="' +  annotation + '"';
+          const selector = 'span[' + cellAttr + '][' + lineAttr + ']';
+          return selector;
+        }
+        const selectCodeLines = (annoteEl) => {
+          const doc = window.document;
+          const targetCell = annoteEl.getAttribute("data-target-cell");
+          const targetAnnotation = annoteEl.getAttribute("data-target-annotation");
+          const annoteSpan = window.document.querySelector(selectorForAnnotation(targetCell, targetAnnotation));
+          const lines = annoteSpan.getAttribute("data-code-lines").split(",");
+          const lineIds = lines.map((line) => {
+            return targetCell + "-" + line;
+          })
+          let top = null;
+          let height = null;
+          let parent = null;
+          if (lineIds.length > 0) {
+              //compute the position of the single el (top and bottom and make a div)
+              const el = window.document.getElementById(lineIds[0]);
+              top = el.offsetTop;
+              height = el.offsetHeight;
+              parent = el.parentElement.parentElement;
+            if (lineIds.length > 1) {
+              const lastEl = window.document.getElementById(lineIds[lineIds.length - 1]);
+              const bottom = lastEl.offsetTop + lastEl.offsetHeight;
+              height = bottom - top;
+            }
+            if (top !== null && height !== null && parent !== null) {
+              // cook up a div (if necessary) and position it 
+              let div = window.document.getElementById("code-annotation-line-highlight");
+              if (div === null) {
+                div = window.document.createElement("div");
+                div.setAttribute("id", "code-annotation-line-highlight");
+                div.style.position = 'absolute';
+                parent.appendChild(div);
+              }
+              div.style.top = top - 2 + "px";
+              div.style.height = height + 4 + "px";
+              div.style.left = 0;
+              let gutterDiv = window.document.getElementById("code-annotation-line-highlight-gutter");
+              if (gutterDiv === null) {
+                gutterDiv = window.document.createElement("div");
+                gutterDiv.setAttribute("id", "code-annotation-line-highlight-gutter");
+                gutterDiv.style.position = 'absolute';
+                const codeCell = window.document.getElementById(targetCell);
+                const gutter = codeCell.querySelector('.code-annotation-gutter');
+                gutter.appendChild(gutterDiv);
+              }
+              gutterDiv.style.top = top - 2 + "px";
+              gutterDiv.style.height = height + 4 + "px";
+            }
+            selectedAnnoteEl = annoteEl;
+          }
+        };
+        const unselectCodeLines = () => {
+          const elementsIds = ["code-annotation-line-highlight", "code-annotation-line-highlight-gutter"];
+          elementsIds.forEach((elId) => {
+            const div = window.document.getElementById(elId);
+            if (div) {
+              div.remove();
+            }
+          });
+          selectedAnnoteEl = undefined;
+        };
+          // Handle positioning of the toggle
+      window.addEventListener(
+        "resize",
+        throttle(() => {
+          elRect = undefined;
+          if (selectedAnnoteEl) {
+            selectCodeLines(selectedAnnoteEl);
+          }
+        }, 10)
+      );
+      function throttle(fn, ms) {
+      let throttle = false;
+      let timer;
+        return (...args) => {
+          if(!throttle) { // first call gets through
+              fn.apply(this, args);
+              throttle = true;
+          } else { // all the others get throttled
+              if(timer) clearTimeout(timer); // cancel #2
+              timer = setTimeout(() => {
+                fn.apply(this, args);
+                timer = throttle = false;
+              }, ms);
+          }
+        };
+      }
+        // Attach click handler to the DT
+        const annoteDls = window.document.querySelectorAll('dt[data-target-cell]');
+        for (const annoteDlNode of annoteDls) {
+          annoteDlNode.addEventListener('click', (event) => {
+            const clickedEl = event.target;
+            if (clickedEl !== selectedAnnoteEl) {
+              unselectCodeLines();
+              const activeEl = window.document.querySelector('dt[data-target-cell].code-annotation-active');
+              if (activeEl) {
+                activeEl.classList.remove('code-annotation-active');
+              }
+              selectCodeLines(clickedEl);
+              clickedEl.classList.add('code-annotation-active');
+            } else {
+              // Unselect the line
+              unselectCodeLines();
+              clickedEl.classList.remove('code-annotation-active');
+            }
+          });
+        }
+    const findCites = (el) => {
+      const parentEl = el.parentElement;
+      if (parentEl) {
+        const cites = parentEl.dataset.cites;
+        if (cites) {
+          return {
+            el,
+            cites: cites.split(' ')
+          };
+        } else {
+          return findCites(el.parentElement)
+        }
+      } else {
+        return undefined;
+      }
+    };
+    var bibliorefs = window.document.querySelectorAll('a[role="doc-biblioref"]');
+    for (var i=0; i<bibliorefs.length; i++) {
+      const ref = bibliorefs[i];
+      const citeInfo = findCites(ref);
+      if (citeInfo) {
+        tippyHover(citeInfo.el, function() {
+          var popup = window.document.createElement('div');
+          citeInfo.cites.forEach(function(cite) {
+            var citeDiv = window.document.createElement('div');
+            citeDiv.classList.add('hanging-indent');
+            citeDiv.classList.add('csl-entry');
+            var biblioDiv = window.document.getElementById('ref-' + cite);
+            if (biblioDiv) {
+              citeDiv.innerHTML = biblioDiv.innerHTML;
+            }
+            popup.appendChild(citeDiv);
+          });
+          return popup.innerHTML;
+        });
+      }
+    }
+  });
+  </script>
+</div> <!-- /content -->
+
+
+
+
+</body></html>

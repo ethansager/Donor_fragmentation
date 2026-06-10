@@ -1,0 +1,24 @@
+
+\begin{table}[htbp]
+   \caption{\label{tab:annual_csens} Sensitivity to the log additive constant $c$ vs. PPML (Admin1, region + year FE).}
+   \bigskip
+   \centering
+   \begin{tabular}{lccccc}
+      \toprule
+       & \multicolumn{3}{c}{$\Delta\log(\mathrm{NL}+c)$} & asinh(mean\_nl) & Nightlights (level)\\
+                           & log, c=.01    & log, c=.1     & log, c=1      & IHS level     & PPML level \\   
+                           & (1)           & (2)           & (3)           & (4)           & (5)\\  
+                           &  OLS          & OLS           & OLS           & OLS           & Poisson\\  
+      \midrule 
+      Donor Fragmentation  & 0.1057        & 0.2452        & -0.4668       & -0.0346$^{*}$ & -0.1070$^{**}$\\   
+                           & (2.141)       & (1.157)       & (0.7762)      & (0.0202)      & (0.0522)\\   
+       \\
+      Observations         & 4,725         & 4,725         & 4,725         & 5,260         & 5,050\\  
+       \\
+      Admin1 fixed effects & $\checkmark$  & $\checkmark$  & $\checkmark$  & $\checkmark$  & $\checkmark$\\   
+      Year fixed effects   & $\checkmark$  & $\checkmark$  & $\checkmark$  & $\checkmark$  & $\checkmark$\\   
+      \bottomrule
+   \end{tabular}
+\end{table}
+
+

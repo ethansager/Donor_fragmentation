@@ -1,0 +1,28 @@
+\begin{table}[htbp]
+\centering
+\caption{OLS Model}
+\label{tab:ols_results}
+\begin{tabular}{lcccc}
+   \tabularnewline \midrule \midrule
+   Dependent Variable: & \multicolumn{4}{c}{$\Delta$ Night Light}\\
+                      & High Admin1   & Low Admin1 & High Admin2 & Low Admin2 \\   
+   Model:             & (1)           & (2)        & (3)         & (4)\\  
+   \midrule
+   \emph{Variables}\\
+   Lag Fragmentation       & 1.368         & -2.980     & 0.1211      & -0.3843\\   
+                      & (1.463)       & (4.556)    & (1.553)     & (1.543)\\   
+   Lag LN(Total Aid)  & -0.2954$^{*}$ & 1.295      & -0.0428     & -0.1636\\   
+                      & (0.1553)      & (1.547)    & (0.1480)    & (0.1579)\\   
+   Lag LN(Population) & -0.5615       & -1.536     & 1.026       & 0.9175\\   
+                      & (0.5056)      & (1.164)    & (0.8432)    & (1.173)\\   
+   \midrule
+   \emph{Fit statistics}\\
+   Observations       & 580           & 1,741      & 1,613       & 4,840\\  
+   R$^2$              & 0.01013       & 0.00389    & 0.00141     & 0.00034\\  
+   \midrule \midrule
+   \multicolumn{5}{l}{\emph{Clustered (GID\_0) standard-errors in parentheses}}\\
+   \multicolumn{5}{l}{\emph{Signif. Codes: ***: 0.01, **: 0.05, *: 0.1}}\\
+\end{tabular}
+\end{table}
+
+

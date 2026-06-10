@@ -1,0 +1,283 @@
+\documentclass[11pt]{article}
+\usepackage{UF_FRED_paper_style}
+
+\hypersetup{
+    colorlinks=true,
+    linkcolor=black,
+    citecolor=black,
+    urlcolor=black
+}
+
+%% ===============================================
+%% Setting the line spacing (3 options: only pick one)
+ \doublespacing
+% \singlespacing
+%\onehalfspacing
+%% ===============================================
+
+%\setlength{\droptitle}{-5em} %% Don't touch
+
+% %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% SET THE TITLE
+% %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+% TITLE:
+\title{Competition or Chaos? Donor Fragmentation and the Politics of Aid Effectiveness}
+
+% AUTHORS:
+\author{ Ethan Sager\\% Name author
+    \href{mailto:es1772@georgetown.edu}{\texttt{es1772@georgetown.edu}} %% Email author 2
+\and Jennifer Tobin\\% Name author
+    \href{mailto:jlt58@georgetown.edu}{\texttt{jlt58@georgetown.edu}} %% Email author 1
+    }
+    
+% DATE:
+\date{\today}
+
+% %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%\begin{document}
+%\maketitle
+
+\makeatletter
+\renewcommand{\maketitle}{
+  \begin{center}
+    \vspace*{-2em} % adjust title position slightly upward if needed
+    {\LARGE\bfseries \@title \par}
+    \vskip 1.5em
+    {\large
+      \lineskip .5em
+      \begin{tabular}[t]{c}
+        \@author
+      \end{tabular}\par
+    }
+    \vskip 1em
+    {\normalsize \@date \par}
+    \vspace{1em}
+  \end{center}
+}
+\makeatother
+
+\begin{document}
+\begingroup
+\let\clearpage\relax
+\maketitle
+\endgroup
+% %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% ABSTRACT
+% %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+{\setstretch{.8}
+
+
+
+\begin{abstract}
+National policies and institutional quality have long been recognized as key determinants of aid effectiveness \citep{acemoglu_colonial_2001, burnside_aid_2000}. At the national level, capable governments are better able to harness donor competition, whereas weaker ones often fail to do so. Yet at the subnational level, the relationship between aid fragmentation and development outcomes depends not only on national institutions but also on local ones. Subnational governments with stronger administrative capacity can coordinate donor activities and align aid with local priorities, while weaker jurisdictions are more prone to inefficiency and duplication \citep{faguet_decentralization_2014}. To test this argument, we combine geocoded aid data from GODAD with public perception data from Afrobarometer across thirteen African countries between 2005 and 2015. We find that aid fragmentation is positively associated with local economic growth in regions with higher governance capacity, but not in weaker administrative units, suggesting that the effectiveness of aid depends critically on subnational institutional strength.
+
+\bigskip
+\noindent
+\textbf{Keywords:} Foreign Aid; Nightlights; Fragmentation; Subnational Government
+
+\noindent
+\textbf{JEL Classification:} F35; O19; R58
+\end{abstract}
+}
+
+
+\newpage
+% %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% BODY OF THE DOCUMENT
+% %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% --------------------
+\section{Introduction}
+% --------------------
+Foreign aid fragmentation—where multiple donors operate largely independently in the same region or sector—has long been criticized for undermining economic development in recipient countries. Extant research highlights how uncoordinated donors lead to high transaction costs, project duplication, and an overburdened bureaucracy \citep{Acharyaetal_2006}; \citep{knack_donor_2007}. Indeed, a number of empirical findings link aid fragmentation to weaker institutions, increased corruption, and reduced economic growth \citep{knack_donor_2007};. Yet, more recent research suggests that fragmentation can, under certain circumstances, foster positive impacts on recipient countries. By expanding the "marketplace of ideas," fragmentation increases competition between donors, driving innovation which can offer recipient governments more choice and minimizes dependence on any single donor \citep{gehring_aid_2017}.  
+
+This new lens where fragmentation sometimes hinders, yet occasionally boosts development poses a clear puzzle: Why does fragmentation stifle economic growth in some contexts, while boosting it in others? We argue that local government capacity offers a critical explanation to this puzzle. Drawing on subnational evidence, we show that in regions/districts where local government capacity is stronger, governments are able to mitigate the problems inherent in donor fractionalization. These higher capacity districts can better coordinate multiple donors, reduce the strain of overlapping bureaucratic demands, and even leverage donor competition to secure better long term economic gains. At the same time, those districts with weaker local government capacity are unable to manage the fragmented donor engagement and are more likely to experience the conventional pitfalls of fragmentation. By analyzing donor fragmentation at the subnational level, we are able to connect the newly divergent empirical findings on fragmentation and both theorize and demonstrate how local governance capacity can transform fragmentation from a liability into a potential asset for economic growth. 
+
+Capitalizing on the new GODAD dataset, in this paper we construct an index for donor fragmentation at two levels of aggregation the first and second administrative levels per GADM\footnote{per GADM 4.1 see: https://gadm.org/}. We then match these regions to geocoded afrobarometer data in which we construct 3 measures of subnational governance quality. We then fit pooled-OLS, two-way fixed effects, and a control function to test for the interaction between our fragmentation indexes and subnational governance quality. We see a suggestive pattern that subnational governance mediates the negative impacts of fragmentation. 
+
+The paper proceeds as follows: In section 1 we outline the theoretical grounding of why we hypothesize subnational governments may mediate the negative effects of fragmentation. Then in section 2 we outline the datasets and construction of the panel used for our analysis. Lastly in section 3, we walk through the results and highlight what they mean for thinking about our theorized mechanism. 
+
+% --------------------
+\section{Theory}
+% --------------------
+There is no shortage of research focusing on the problems of aid fragmentation. The focus, since the earliest work has been on its potential to increase transaction costs and place undue strain on the administrative capacities of recipient countries \cite{knack_donor_2007}. When numerous donors operate independently in the same region or sector, recipient governments must navigate divergent reporting requirements, budgeting cycles, and procurement rules. The increased work can overburden public officials, detract from core governance tasks, and even siphon off the most skilled local staff into donor-funded roles \cite{knack_donor_2007}). This duplication of efforts may not only weaken local bureaucracies, but can dilute the potential impact of aid by creating a “brain drain” and hindering the longer-term institutional strengthen of local bureaucracies. 
+
+Other work demonstrates the impact of the lack of coordination on recipients. When donors fail to coordinate, their individual goals and incentives result in both overlapping projects and projects that can contradict each other. This misalignment can lead a duplication of projects, gaps in coverage in areas that recipients have marked as vital, and a failure to comprehensively understand and address the needs of the recipient country—all resulting in less effective development aid (Acharya et al 2006). An interesting example of this comes from Mozambique. In a 2005 report, Killick et al estimated (and they believed this to be an underestimate as they did not include World Bank missions) that more than 2.5 missions per week were started in Mozambique in 2004. The study found that within this proliferation of donors and project, multiple donors ran parallel projects with distinct reporting and monitoring frameworks, with a number of contradictory project goals that even disrupted the government’s development plans.
+
+And fragmentation can even lead to the programs themselves being weaker as donors look for quick wins over long-term institution building, resulting in weaker governance structures and reduced aid effectiveness.  For example, Morss (1984) and \cite{knack_donor_2007} both show that fragmentation and competition between donors creates pressure for quick and visible results from recipients, leading donors to favor short-term disbursements over longer term capacity building reforms. Empirical studies further indicate that fragmentation may exacerbate corruption, especially when donors compete to disburse funds rapidly, potentially reducing oversight and accountability (see for example, Acharya et al. 2006).
+
+Killick et al’s summary of the agriculture sector in Mozambique brings these constraints together well:
+\begin{quote} \textit{AGRICULTURE (PROAGRI):  The PROAGRI arrangement is directed to the institutional strengthening of the Ministry of Agriculture and covers roughly three-fifths of the Ministry’s total budget.  PROAGRI is not a real SWAp – it is rather a basket arrangement, in which some donors insist on earmarking within this fund and some also support individual projects falling outside it.  Whereas donors and Ministry staff agree that significant improvements have occurred with respect to financial management and accountability, they also agree that this has been the only substantial positive impact of PROAGRI.  A recent external evaluation portrayed a dismal picture of human resource development within the Ministry.  Furthermore, PROAGRI has had no effect on the development of agricultural capabilities and had little impact on the Ministry’s performance in delivering core services (for example, after 5 years of PROAGRI, still there are no Sanitary and Phitosanitary systems in place).  Rural development, which used to be a core area of the old Ministry of Agriculture and Rural Development, has not been part of PROAGRI I.  This is mainly due to fragmented donor interventions and the continuing strength of established individual niches and of the interests (and rentseeking) that such fragmentation often creates.  There is a working group to develop a set of performance indicators but there are no effective provisions for donor accountability in place.  PROAGRI has lowered some transactions costs, e.g.  by persuading donors to use a common financial reporting system, but there have been major problems with the unpredictability of promised inflows (only partly the fault of deficiencies on the ministry’s side).  Harmonisation, e.g.  in the form of joint missions, has been weak.} 
+\end{quote}
+
+Yet recent work challenges the notion that fragmentation is inherently bad \citep{han_aid_2015, gehring_aid_2017}. The idea here is that under certain conditions, multiple donors could introduce competition and potentially spur innovation amongst donors, leading to a benefit for recipient governments \citep{han_aid_2015}. In some sectors—particularly those requiring diverse skill sets or specialized interventions—multiple independent donors might collectively respond more comprehensively to complex challenges \citep{gehring_aid_2017, carlitz_harmony_2024}. Moreover, fragmentation can sometimes reduce donor dominance, giving recipient governments greater bargaining power over project design. Finally, larger numbers of donors can reduce not only the risk of aid shocks, but the political destabilization that often follows from a sudden reduction in aid from a given donor \citep{gutting_donor_2017}. Thus, a diverse donor base can provide some stability for recipient countries—even if it results in increased fragmentation.
+	
+Donors and recipients alike recognize the problems inherent to fragmentation. At the global level there has been no shortage of attention paid to the importance of harmonizing aid flows to increase the effectiveness of bilateral and multilateral foreign aid. Starting in 1996 with DAC’s “Shaping the 21st Century: The Contribution of Development Co-operation,” and continuing with the World Bank’s Comprehensive Development Framework in 1999, subsequent policy documents and high-level donor and recipient aid meetings continually mention the importance of reducing fragmentation and strengthening harmonization amongst donors and recipients to make aid more effective. Table 1 lists just some of the major aid conferences that highlight how donor’s have attempted to focus on coordination in order to reduce overlap and transaction costs as well as to align donor giving with recipient countries priorities. 
+
+Yet, despite the best of intentions, little has been achieved towards decreasing fragmentation—in fact, the competing interests and priorities of donors that leads to fragmentation in the first place is precisely what hampers their ability to coordinate within countries. Instead, recipients have turned to a number of strategies to attempt to mitigate some of the negative effects of fragmentation. These strategies tend to focus on bargaining with donors, and while \cite{swedlund_can_2017} outlines tactics that recipients use for influencing the terms of foreign aid, donors often retain the upper hand in negotiations.  Beyond promoting donor coordination, and advocating for donor alignment with national development plans, some recipients have purposely engaged with lead donors to impel them to engage with other donors \citep{steinwand_compete_2015}, while others have worked to leverage non-state actors such as NGOs and the private sector to complement donor efforts.   
+
+Taken together, these strategies underscore how recipient governments seek to manage and mitigate donor fragmentation through bargaining. However, whether these efforts ultimately succeed depends on a host of contextual factors shaping the environment in which donors and recipients interact. Regime type, corruption and accountability mechanisms, sector-specific needs, and political stability all influence the degree to which fragmented aid can be harnessed for constructive ends—or whether it instead exacerbates inefficiencies. In other words, the capacity of a recipient government to coordinate and guide multiple donor projects is inseparable from the broader local context in which that government operates \citep{acharya_proliferation_2006, knack_donor_2007, carlitz_harmony_2024}. 
+
+For instance, in relatively democratic or politically stable contexts, officials may have more robust mechanisms to align donor resources with national strategies—through, for example stronger legislative oversight, freer media, or more transparent budgeting. Whereas, in autocratic or more volatile settings, resources can be diverted or used for patronage projects \citep{knack_donor_2007}. Similarly, sectors requiring diverse interventions—such as healthcare—may actually see benefits from multiple donors because of donors often specialize in different areas and can collectively cover a wide spectrum of needs (particularly during crises) \citep{carlitz_harmony_2024}. At the same time, sectors with clear interventions, such as large-scale infrastructure projects that require large capital outlays, often necessitate integrated planning and uniform standards that are harder to achieve with donors working independently and with varied incentives \citep{acharya_proliferation_2006}. 
+
+Yet, while much of this discussion focuses on national-level conditions, a few studies have demonstrated that local governance arrangements can very dramatically, even within countries, impacting how donors (fail to) coordinate on the ground (see for example \cite{faguet_decentralization_2014}; \cite{powell} Powell and Findley 2012). Despite cross-country and sectoral variations, the research on fragmentation has often overlooked the substantial heterogeneity within countries. Local governance structures, administrative capacity, and political willingness can differ drastically across regions. Consequently, examining aid fragmentation sub-nationally—and, in particular, the ways in which local government capacity shapes outcomes—offers a more nuanced view of how multiple donors may either impede or enhance development.
+
+\begin{figure}[h!]
+  \includegraphics[scale=.5]{figure_1.png}
+  \caption{Fragmentation Index by Admin 1 (2015)}
+  \label{fig:frag_1}
+\end{figure}
+
+\textit{Subnational Government capacity}
+
+Government capacity is a critical element in mitigating the potential drawbacks of aid fragmentation while harnessing its potential benefits (Gehring et al). In order for local officials to guide external resources—such as multiple donors with varied interests—towards locally determined goals as opposed to donor agendas, a number of factors must be present. At the extremes of capacity, we might think about the concepts of embedded autonomy and state directed development. Local capacity and aid fragmentation from the perspective of embedded autonomy would mean that state actors (even at the regional or municipal level) are autonomous enough from donors to be able to plan their regional development goals, yet remain closely embedded in local networks that provide information, accountability, and legitimacy (Evans 1995). Similarly, state-directed development underscores the importance of strong, capable institutions that can steer industrial and social policies effectively (Kohli 2004). While Kohli’s work often highlights central governments, the underlying principle—that robust governmental structures can concentrate resources, set priorities, and coordinate diverse actors—applies equally to local administrations grappling with donor proliferation. At the subnational level then, capacity entails not only the formal administrative strength we might think of in general definitions of capacity, but also adaptability and embeddedness: local officials must be adept at navigating donor requirements, aligning them with community priorities, and preserving institutional coherence over time. In this way, higher-capacity districts or municipalities can parlay the presence of numerous donors into more comprehensive and context-specific development strategies, rather than succumbing to the duplication, short-term disbursements, or institutional strains that typically accompany aid fragmentation.
+
+In this manuscript, we operationalize local capacity using a combination of survey items from the Afrobarometer. First, we construct a subnational government perceptions index based off the work done by \cite{iddawela_quality_2021}, in addition to this index, we also use the count of services and facilitates in each enumeration area as a proxy for public service delivery. This allows us to capture both the formal institutional strength (e.g., organizational resources) and the citizens perception around their local governments capacity. We hypothesize that the perception indicator is a better indicator of actual government functioning than the proxies of public service delivery which may be confounded by additional variables.  
+
+Local government capacity—the institutional ability of subnational authorities to coordinate stakeholders, effectively mobilize and manage resources, and implement policies in line with development objectives (Faguet 2012; \citep{mansuri} Mansuri and Rao 2013)—represents a critical element in mitigating the potential drawbacks of aid fragmentation while harnessing its potential benefits. This capacity helps governments to 1) foster better donor coordination, 2) lower transaction costs, and 2) leverage donor competition for more favorable development outcomes. Before we assess each of these in turn, it is important to allay any concerns that local capacity holds less importance for fragmentation because most negotiations with donors are done at the national level. While national authorities often set broad aid priorities, subnational authorities frequently oversee day to day operations such as site selection, budgeting details, and even stakeholder engagement. Even if key negotiations originate at the national level, local officials must handle the ongoing interplay of donor requirements. This context makes local capacity pivotal to managing the administrative and technical burdens associated with aid fragmentation.
+
+Examples abound regarding subnational actors engaging in negotiations with donors over various policies around foreign aid. Faguet’s in-depth work on decentralization in Bolivia details how following Bolivia’s decentralization, local officials directly negotiated with international donors over infrastructure and service delivery projects. Gugerty and Kremer (2008), Casey et al (2012), and Ghazala and Rao (2013) detail extensive stakeholder negotiations between local community associations, local councils, and NGOs in the delivery of participatory development. Thus, donor-recipient negotiations do not only occur at the uppermost levels of government. Local government officials negotiate project terms, funding, and implementation details, necessitating greater capacity to overcome the problems of donor fragmentation.
+
+\vspace{.5cm} \\ 
+\textit{Fostering Better Donor Coordination}\\
+One key avenue through which local government capacity mitigates fragmentation’s harms is by facilitating donor coordination. Scholars have long noted that a proliferation of donors leads to overlapping projects and divergent reporting requirements unless a central authority effectively aligns these efforts under coherent development objectives (Acharya et al. 2006; Bigsten and Tengstam 2015). However, capacity at the subnational level can be just as decisive as central coordination: capable local administrations can convene donor representatives, set district-level priorities, and encourage collaborative project planning (Mansuri and Rao 2013; Powell and Findley 2012). For instance, Faguet (2012) documents how municipalities in Bolivia, after decentralization, formed local committees and used transparent budgeting procedures to coordinate donor inflows around local needs. These mechanisms prevented duplicative infrastructure projects and ensured that external resources complemented community-driven plans. Ultimately, higher-capacity local governments, being skilled at policy formulation and stakeholder engagement, can align multiple donors more seamlessly, thus diminishing the typical coordination failures that fragmented aid can otherwise cause—and helping translate foreign aid into greater economic growth at the local level.
+
+\vspace{.5cm} \\ 
+\textit{Lowering Transaction Costs}\\
+Another way capacity reduces fragmentation’s negative impact is by lowering the transaction costs that arise when multiple donors each impose distinct procedures (Knack and Rahman 2007; Acharya et al. 2006). Transaction costs typically refer to the administrative burdens of monitoring, reporting, and procurement, which can drain limited government bandwidth (Knack and Rahman 2007; Carlitz and Ziaja 2023). Yet a well-equipped local government with robust bureaucratic systems—such as standardized accounting software, comprehensive data collection, or a dedicated donor liaison unit—can handle these overlapping demands more efficiently (Casey et al. 2012; Faguet 2012). 
+
+By establishing clear rules and processes on how donor projects are integrated into local finance and planning frameworks, high-capacity subnational authorities minimize duplicative paperwork and oversight gaps (Mansuri and Rao 2013). Over time, this reduces the administrative overload often associated with fragmentation, enabling officials to concentrate on core governance tasks—like service delivery and institution building—in turn leading to greater development outcomes and stronger economic growth.\vspace{.5cm} \\ 
+\textit{Leveraging Donor Competition}\\
+
+Beyond merely reducing drawbacks, capable local governments may capitalize on donor competition to secure more favorable project terms or resources. Certain scholars argue that fragmented aid can serve as a “marketplace of ideas,” where donors bring varied approaches and scramble to demonstrate their effectiveness (Han and Koenig-Archibugi 2015; Gehring et al. 2017). While this dynamic can lead to hasty disbursements in low-capacity settings—potentially fueling corruption or policy incoherence—higher-capacity local governments are positioned to harness inter-donor rivalry more constructively (Powell and Findley 2012). For example, local officials may compare donor proposals, negotiating better funding arrangements or technical assistance packages that align with district-level plans (Faguet 2012). Moreover, well-staffed bureaucracies can evaluate a donor’s track record and push for greater accountability measures, ensuring that competition yields high-quality interventions rather than superficial spending sprees (Mansuri and Rao 2013). Thus, with strong local capacity, fragmentation can shift from being a liability to a source of innovation and resource maximization, in turn leading to greater economic growth.
+
+Taken together, these three mechanisms—improved donor coordination, reduced transaction costs, and constructive donor competition—illustrate how stronger local capacity can mitigate the potential issues of aid fragmentation and instead promote greater economic growth. This leads to the following testable hypothesis:
+\begin{quote}
+    
+\textit{H1: Local capacity mitigates the negative relationship between fragmentation and economic growth}
+\end{quote}
+
+
+
+\section{Data and Methods}
+% --------------------
+To test the empirical implications of our argument, we analyze how economic growth at the local level is impacted by local fragmentation, local government capacity, and their interaction. We analyze sub-Saharan Africa over the period 2000-2015.  We focus specifically on 13 countries: Benin, Botswana, Ghana, Madagascar, Mali, Mozambique, Malawi, Namibia, Senegal, Tanzania, South Africa, Zambia, and Zimbabwe. While we hope to eventually test our assumptions over various regions and time periods, we begin here as these 13 countries have data across 4 waves of Afrobarometer which lets us leverage the temporal variation in subnational governance for these countries. \vspace{.5cm} \\ 
+\textit{Dependent Variable}\\
+To proxy for economic development at the local level, we rely on nightlights data from the Harmonized DMSP-VIIRS yearly dataset.  Nightlights have been used as a proxy for economic growth since the seminal paper by \cite{henderson_measuring_2012}. Although recent research has highlighted a concern of measurement error for rural areas which are predominately agricultural and may have limited changes in nightlights while economic growth is occurring\citep{gibson_which_2021}. We believe given the aggregation of spatial units we employ and the emphasis of trends along regional dynamics, the data has the ability to reasonably estimate growth at both levels of aggregation. 
+
+The period of interest (2005-2015) results in a break in the Nighttime Light (NTL) time-series used in econometric models. The Defense Meteorological Satellite Program (DMSP)/Operational Linescan System (OLS) ends in 2013. From 2013, the new time-series is based on the Visible Infrared Imaging Radiometer Suite (VIIRS) on the Suomi National Polar-orbiting Partnership. The two datasets are not directly comparable due to different ranges of possible values. DMSP is less precise and truncated at the top end of the radiance scales, this is not the same issue in VIIRS data which has improved spatial and radiometric resolutions leading to no truncation of upper bound radiance. Therefore, we use the calibration methods and resulting dataset implemented by \cite{regan_illuminating_2023} that creates standardized pixel-level panel of nightlights before and after 2013. 
+        
+ Further, due to the aggregation our administrative units vary in size and scope. Therefore, we first compute an areal average of the polygon which represents each geography. We further construct a summation of the night lights in the administrative region. However, we opt for using the average as our main dependent variable because the sum may lead to bias in favor of larger spatial units\cite{bigsten_international_2015}.\par
+
+\vspace{1cm}
+\textit{Independent Variables}\par
+\vspace{1cm}
+To measure aid fragmentation we rely on the new Geocoded Open Data for Aid and Development (GODAD) dataset \cite{bomprezzi_wedded_2024}. 
+The GODAD dataset is based on the OECD’s Creditor Reporting System (CRS) and data from AidData on China (2000-2021), India (2007-2014), and the World Bank (1995-2023). It provides geocoded information on aid projects for the 1973-2020 period. The data was geocoded via a natural language processing approach and provides auxiliary information about the aid projects in which we leverage to merge with our other datasets. 
+        
+Using GODAD we first construct the most commonly used fragmentation index in the literature, based on the Herfindahl-Hirschman Index \citep{knack_donor_2007}. We construct the Herfindahl-Hirschman Index (HII) as:
+        \[ \ HHI = \sum_{i=1}^{N} \pi^2 \]
+where i represents the unique donor within each adminstrative unit and pi equals the share that donor has in the overall aid of a given year and administrative unit. We subtract the resulting number from 1 which tells us the likelihood that a set of two random draws gets the same donor twice. Next we construct a set of count variables using what \cite{gehring_aid_2017} refers to as CR1 which is simply the percentage of aid the largest donor has in each area of interest. We then subtract this from 1 to obtain our final index. We then follow the same process with the top three donors, also subtracting the resulting ratio from 1. Next, we sum the percentage of aid which is comprised of donors who have less than 10\% of total aid in each administrative area. However, we do not subtract this from 1 as a higher score here implies higher fragmentation--the opposite of the other indicators. Lastly a simple count of donors in a given year and admin unit is calculated. We include a project in the calculation of fragmentation indexes by the year it is denoted as paid in GODAD. Therefore a project that has commitments in 2010 but the funds are not disbursed until 2013 would not be counted until 2013. For each year admin unit pair we calculate the total aid in 2014 constant USD. As many projects occur in multiple regions we simply evenly divide the total disbursement by the number of regions it is being implemented in.  
+
+To measure government capacity, we rely on data from the Afrobarometer rounds 3-6.  We construct three variables from the Afrobarometer surveys. First, a subnational governance perceptions index, followed by  two indices on the number of services and facilities offered in the primary sampling unit as reported by the Afrobarometer enumerator. Following closely \citep{iddawela_quality_2021} we construct a subnational government perceptions index across 7 items\footnote{\citep{iddawela_quality_2021} uses 8 items we drop the item for our index on tax collector corruption}, which is calculated by:
+        \[
+        X_{\min} = \min\{X_i\}, \quad X_{\max} = \max\{X_i\}
+        \]
+        
+        \[
+        \bar{S} = \frac{1}{n} \sum_{i=1}^{n} X_i
+        \]
+        
+        \[
+        \text{SGQ} = 100 \cdot \frac{\bar{S} - S_{\min}}{S_{\max} - S_{\min}}
+        \]
+        in addition to this index, we also use the count of services and facilitates in each enumeration area as a proxy for public service delivery.
+
+To match the afrobarometer data to the GODAD dataset, we rely on AidData, which geocoded the enumeration area names of all six rounds of Afrobarometer’s surveys in 37 African countries between 1999 and 2015. This provides latitude and longitude of these enumeration areas. We are able to use 13 countries that have surveys in rounds 3, 4, 5, and 6 which provides us with a similar subsample to GODAD, covering the same years and countries.\par 
+ \vspace{1cm}
+\textit{Control Variables}\par
+ \vspace{.5cm}
+
+We also include the following control variable where applicable. Population counts which we take the natural log of from World Pop for all years (2005-2015). The recent literature has omitted a further set of control given that our fixed effects should control for any further heterogeneity.  We follow suit with this idea. 
+
+Using this data we analyze the interaction between governance and fragmentation and its implications for aid effectiveness at the subnational level. We hypothesize that while governance capacity may enhance aid effectiveness, donor fragmentation generally undermines it. And, according to our theory, better governance capacity should mitigate any negative impacts of fragmentation, and conversely, as fragmentation increases, it should diminish the positive influence of governance on aid outcomes. 
+
+After constructing the panel we are left with information on 39309 aid projects covering the 11 year period of 2005-2015 in the 13 aforementioned countries. These projects occur in 182 first level administration units and 1104 second level units. We assess fragmentation at both the first and second administrative levels, utilizing the boundaries from GADM 4.1. The level of fragmentation varies significantly within countries and regions, which is likely  due to donor strategies or regional context. We look at fragmentation by each individual year incorporating lags where appropriate. Two main caveats are important to keep in mind  given the overlap between GODAD and Afrobarometer. First, given the reality of the datasets we have both regions that received aid but were not surveyed and regions that were surveyed but not in GODAD. We assume that these missing cases are simply missing at random but we can not be sure that systematic bias does not occur one direction or the other. Next, at least one of the given subnational governance index scores is based on an enumeration area cluster with only 8 people. Given this small sample size our estimates may not be truly representative of that administrative unit.  However, we believe they are at least suggestive. 
+
+Our primary empirical estimation strategy employs a control function approach. We use this in order to control for unobserved, time-invariant characteristics at the administrative unit level that could confound the relationship between aid allocation and economic performance. We also incorporate lagged variables by one year to capture the delayed effects of aid, thereby acknowledging that the impact of aid on growth may not be immediate. For comparative purposes, we also estimate a pooled Ordinary Least Squares (OLS) model and two-way fixed effects (TWFE) model. The pooled OLS approach treats the panel data as a large cross-sectional dataset, disregarding any unit-specific heterogeneity. While this specification is more straightforward, it is prone to bias if unobserved regional factors are correlated with the aid variables. The contrast between the cfa, fixed effects and pooled OLS estimates provide valuable insights into the magnitude of such biases.
+
+Given the potential reverse causality and endogeneity in our regressions we can not claim a purely causal mechanism; however, we posit that the resulting evidence highlights the need for a continued investigation into the underlying mechanisms that may or may not be driving the results. We first run the following regression on our data from 2005-2015, at both levels of administration with no controls beyond the two-way fixed effects. The main estimate of interest is the interaction term between fragmentation and the subnational government quality index. If our theory holds we would expect the coefficients on the fragmentation index to be positive when in high capacity admins and to be negative when in low. 
+
+We estimate the following cfa model:\footnote{Following the literature we add a small number .01 to our log of mean night lights to keep regions without any light from falling out of the regression. This is added before we calculate the change.}
+
+Stage One :
+\[ \ 
+Resid_{i,t-1} = \beta_1IV_{it-1} + \beta_2\ln(Aid_{it-1}) +  \beta_3 \ln(Pop_{it-1}) + \alpha_{it} + \lambda_i + \epsilon_{it}
+\]
+
+where we define $IV_{it} = BUDGET_{jt} \times Prob_{ji}$, with $BUDGET_{jt}$ measuring aid commitments by donor $j$ in year $t$. $Prob_{ji}$ is a region’s probability to receive aid from a particular donor $j$ in admin $i$ specifically $Prob_{ji} =\frac{1}{11}\sum_{t=2005}^{2015}Prob_{jit}$. Our model can be interpreted as a difference-in-differences approach, as we leverage the variation across donor government resource availability to estimate the different impact of aid on regions with high versus low aid probabilities. Our identification strategy of course must make the assumption that sub-national governance quality does not systematically vary across regions based on their probability of receiving aid.
+
+Stage Two:
+\[ \ 
+\Delta NL_{i,t} = \beta_1\ln(Aid_{it-1}) + \beta_2 Frag_{it-1} +  \beta_3 \ln(Pop_{it-1}) + \alpha_{it} + \lambda_i + resid_{it-1}
+\]
+
+Where i represents the given administrative region and t a given time period between 2005 - 2015. $\alpha$ and $\lambda$ represent our fixed effects by country year and administrative region. Given the complex interplay between governance and aid we estimate the regression in high and low capacity regions which we define as those who are above or below the 75th percentile in the sub-national governance quality measure. By including the fixed effects we control for unobserved heterogeneity across countries and time, ensuring that our estimates reflect within-group variations rather than being confounded by time-invariant characteristics or broad temporal trends. The resulting standard errors are then clustered at the country-year fixed effect. 
+
+
+% --------------------
+\section{Results}
+% --------------------
+
+Table \ref{tab:ols_results} presents our initial results. Overall, we see the expected signs for fragmentation in high capacity columns 1 and 3 but it is imprecisely estimated. The same is true for low capacity where fragmentation has negative sign across both of our administrative levels. These preliminary results suggest that fragmentation may positively influence local economic activity as proxied by night light growth, but this relationship is sensitive to administrative level and the underlying governance capacity.
+
+Turning to our second specification (Table \ref{tab:fe_results}), we estimate a two-way fixed effects model that accounts for unobserved heterogeneity across both regions and years. The general pattern remains for the first administration level across both the high and low capacity. However we do not see this at the second administration level. This divergence across levels suggests that there may be some relationship between aid fragmentation and subnational development outcomes that confounds our estimates. This pattern follows what others have seen on the question of whether aid impacts growth differently across levels of administration. For example, \citep{dreher_aid_2015} found that higher-level administrative units did not have the overall positive effect that second-level administrative regions did when it came to growth in nightlights from aid disbursements.
+
+Next given the endogeneity of aid, we re-estimate the model using a control function approach (Table \ref{tab:cfa_results}). The direction of effects remains broadly consistent in the first administrative level with the ols model—positive though imprecise. We see that the coefficient in column two for fragmentation is the expected direction and strong though right at 10$\%$ level of significance in comparison to a positive relationship in column 1.  This reinforces the idea that subnational governance capacity mediates the relationship between fragmentation and growth.
+
+Taking these patterns as a basis we highlight that subnational government matters for the implementation and resulting growth from an aid project. We believe this occurs through our hypothesized mechanism, where fragmentation can lead to competition among donors, and when this competition occurs, high capacity local governments are able to leverage that competition for better returns to their citizens. However. we are currently not able to draw purely casual or unbiased estimates of this interplay. Further work is required in order to fully realize both the data generating process for fragmentation at the subnational level and the casual paths explored in our models. Current results point towards support for our hypotheses, but further work is required. 
+
+% --------------------
+\section{Conclusion}
+% --------------------
+In ths paper, we attempt to reconcile the conflicting findings in the academic literature on aid fragmentation--where it sometimes stifles economic growth, yet under other conditions appears to boost it. Our subnational analysis reveals that local government capacity may be the linchpin that explains some of the variation in outcomes. We theoreize that in districts with stronger capacity, officials successfully coordinate multiple donors, navigate overlapping bureaucratic requirements, and harness donor competition for long-term development gains. By contrast, weaker-capacity districts struggle to manage fragmented donor engagements, frequently succumbing to duplication, corruption risks, and short-term disbursements at the expense of sustainable growth. Thus, fragmentation in itself is neither inherently harmful nor inherently beneficial; it is local governance capacity that ultimately determines whether fragmentation becomes a liability or a catalyst for economic progress.
+
+Our findings are preliminary, but seem to support our hypotheses. That is, local government capacity fundamentally alters the relationship between aid fragmentation and economic growth. However, several next steps will strengthen and refine our analysis. First, we plan to expand our sample to include a broader set of regions and countries, ensuring that our findings hold across more diverse contexts. Second, we aim to move beyond nightlight data as a proxy for economic performance, potentially incorporating additional measures of socioeconomic well-being. Finally, we will address potential endogeneity concerns more rigorously to bolster causal inference and further substantiate how local governance capacity mediates fragmentation’s developmental impact.
+
+% %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% REFERENCES SECTION
+% %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\medskip
+
+\bibliography{references.bib} 
+
+\newpage
+
+% %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% TABLES
+% %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\input{table1_ols}
+\input{table1_fe}
+\input{table2_cfe}
+% %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% FIGURES
+% %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+% ==========================
+% ==========================
+% ==========================
+
+
+\end{document}

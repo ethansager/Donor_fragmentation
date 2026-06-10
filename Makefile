@@ -1,7 +1,7 @@
 # Main Makefile for Donor Fragmentation Project
 # This orchestrates the entire data processing and analysis pipeline
 
-.PHONY: all build clean clean-data clean-output help cleaning cleaning-5year analysis analysis-5year tables tables-5year fresh-analysis
+.PHONY: all build clean clean-data clean-output help cleaning cleaning-5year analysis analysis-5year tables tables-5year fresh-analysis rebuild-redesign rebuild-targets
 
 # Default target
 all: cleaning analysis
@@ -33,6 +33,16 @@ analysis-5year: cleaning-5year
 fresh-analysis: cleaning-5year
 	@echo "Running fresh analysis pipeline..."
 	$(MAKE) -C 02_scripts/02_analysis fresh-analysis-5year
+
+# Run redesign-first rebuild pipeline (sequential)
+rebuild-redesign:
+	@echo "Running redesign rebuild pipeline..."
+	Rscript 02_scripts/03_rebuild/run_rebuild_pipeline.R
+
+# Run redesign pipeline with targets DAG (optional)
+rebuild-targets:
+	@echo "Running redesign rebuild pipeline with targets..."
+	Rscript -e "targets::tar_make(script = '02_scripts/03_rebuild/_targets.R')"
 
 # Generate all tables (shortcut for analysis target)
 tables: analysis
@@ -69,8 +79,10 @@ help:
 	@echo "  make cleaning     - Run data cleaning scripts only"
 	@echo "  make analysis     - Run analysis scripts (depends on cleaning)"
 	@echo "  make tables       - Generate regression tables"
-	@echo "  make fresh-analysis - Run from-scratch analysis (branch: fresh-analysis)
-  make clean        - Remove all generated data and outputs"
+	@echo "  make fresh-analysis - Run from-scratch analysis (branch: fresh-analysis)"
+	@echo "  make rebuild-redesign - Run redesign rebuild pipeline (sequential)"
+	@echo "  make rebuild-targets - Run redesign rebuild pipeline (targets DAG)"
+	@echo "  make clean        - Remove all generated data and outputs"
 	@echo "  make clean-data   - Remove processed data files only"
 	@echo "  make clean-output - Remove output files (tables) only"
 	@echo "  make help         - Display this help message"
